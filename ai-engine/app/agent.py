@@ -68,19 +68,40 @@ async def _simulate_one(
             )
 
         if r.status_code == 429:
+            if attempt >= MAX_RETRIES:
+                logger.error("Persona %s — gave up after rate limit retries", persona.persona_id)
+                return None
             wait = 2 ** attempt * 5
             logger.warning(
                 "Persona %s — 429 rate limit, waiting %ds (attempt %d)",
                 persona.persona_id, wait, attempt + 1,
             )
             await asyncio.sleep(wait)
-            if attempt < MAX_RETRIES:
-                return await _simulate_one(persona, ad_content, attempt + 1)
-            logger.error("Persona %s — gave up after rate limit retries", persona.persona_id)
+            return await _simulate_one(persona, ad_content, attempt + 1)
+
+        if r.status_code in (401, 403):
+            logger.error(
+                "Persona %s — Gemini auth error %d: %s",
+                persona.persona_id, r.status_code, r.text[:300],
+            )
             return None
 
         r.raise_for_status()
-        text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+        data = r.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise ValueError(
+                f"No candidates in Gemini response "
+                f"(promptFeedback={data.get('promptFeedback')})"
+            )
+        candidate = candidates[0]
+        if "content" not in candidate:
+            raise ValueError(
+                f"Candidate has no content "
+                f"(finishReason={candidate.get('finishReason')})"
+            )
+        text = candidate["content"]["parts"][0]["text"]
         return CognitiveLoopResult(**json.loads(text))
 
     except Exception as exc:
@@ -92,7 +113,7 @@ async def _simulate_one(
             )
             await asyncio.sleep(wait)
             return await _simulate_one(persona, ad_content, attempt + 1)
-        logger.error("Persona %s failed permanently: %s", persona.persona_id, exc)
+        logger.error("Persona %s failed permanently: %s", persona.persona_id, exc, exc_info=True)
         return None
 
 
@@ -145,7 +166,11 @@ async def run_cascade_simulation(
 def _calc_metrics(results: List[CognitiveLoopResult]) -> AdMetrics:
     n = len(results)
     dropped = sum(1 for r in results if r.step2_selfish_filtering.is_dropped_out)
-    clicked = sum(1 for r in results if r.step3_final_action.clicked)
+    clicked = sum(
+        1 for r in results
+        if r.step3_final_action.clicked
+        and not r.step2_selfish_filtering.is_dropped_out
+    )
     avg_appeal = sum(r.step1_unconscious_reaction.appeal_score for r in results) / n
 
     return AdMetrics(

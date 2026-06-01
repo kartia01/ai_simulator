@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres?prepareThreshold=0
+    username: postgres.mofpattdqatfxttihwsl
+    password: "@heoo239561"
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5          # Supabase 무료 플랜 최대 동시 연결 수 제한
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  jpa:
+    hibernate:
+      ddl-auto: update              # 최초 실행 시 테이블 자동 생성
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Keep Spring Boot's default camelCase JSON for responses to React.
+  # Snake_case ↔ camelCase for FastAPI payloads is handled per-DTO via @JsonProperty.
+  jackson:
+    default-property-inclusion: non_null
+
+fastapi:
+  base-url: ${FASTAPI_URL:http://localhost:8000}
+
+frontend:
+  origin: ${FRONTEND_ORIGIN:http://localhost:3000}
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.adsimulator: INFO
+    org.springframework.web.reactive.function.client: DEBUG

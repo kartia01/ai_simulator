@@ -13,12 +13,16 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 public class WebClientConfig {
 
+    // Must be >= FastApiClient.simulate() timeout (300s) so Netty doesn't kill the
+    // connection before WebClient's own deadline fires.
+    private static final int READ_TIMEOUT_SECONDS = 310;
+
     @Bean
     public WebClient.Builder webClientBuilder() {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
                 .doOnConnected(conn ->
-                        conn.addHandlerLast(new ReadTimeoutHandler(120, TimeUnit.SECONDS))
+                        conn.addHandlerLast(new ReadTimeoutHandler(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS))
                 );
 
         return WebClient.builder()

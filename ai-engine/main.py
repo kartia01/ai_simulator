@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not os.getenv("GEMINI_API_KEY"):
+        logger.warning("GEMINI_API_KEY is not set — all simulations will fail with 502")
     logger.info("Ad Simulator AI Engine — startup")
     yield
     logger.info("Ad Simulator AI Engine — shutdown")
@@ -74,3 +76,34 @@ async def simulate(request: SimulationRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "ai-engine"}
+
+
+@app.get("/health/gemini")
+async def health_gemini():
+    import httpx as _httpx
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        return {"status": "error", "detail": "GEMINI_API_KEY not set"}
+
+    body = {
+        "contents": [{"parts": [{"text": "Reply with the single word: OK"}]}],
+        "generationConfig": {"maxOutputTokens": 10},
+    }
+    try:
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.post(
+                "https://generativelanguage.googleapis.com"
+                "/v1beta/models/gemini-2.0-flash:generateContent",
+                params={"key": key},
+                json=body,
+            )
+        if r.status_code != 200:
+            return {"status": "error", "http_status": r.status_code, "detail": r.text[:500]}
+        data = r.json()
+        candidates = data.get("candidates", [])
+        if not candidates or "content" not in candidates[0]:
+            return {"status": "error", "detail": "No content in response", "raw": data}
+        text = candidates[0]["content"]["parts"][0]["text"]
+        return {"status": "ok", "gemini_reply": text.strip()}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
@@ -49,6 +50,10 @@ public class FastApiClient {
                 .doOnSuccess(r -> log.info(
                         "← FastAPI OK  ad_id={}  VTR={}%  CTR={}%",
                         r.adId(), r.metrics().vtr(), r.metrics().ctr()))
+                .onErrorMap(WebClientRequestException.class, ex -> {
+                    log.error("FastAPI unreachable: {}", ex.getMessage());
+                    return new RuntimeException("AI Engine unreachable: " + ex.getMessage());
+                })
                 .onErrorMap(WebClientResponseException.class, ex -> {
                     log.error("FastAPI error {}: {}", ex.getStatusCode(), ex.getResponseBodyAsString());
                     return new RuntimeException("AI Engine error: " + ex.getStatusCode());
