@@ -1,6 +1,6 @@
 package com.adsimulator.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import java.util.List;
 
@@ -9,6 +9,6 @@ public record UnconsciousReactionDto(
 
         List<String> keywords,
 
-        @JsonProperty("appeal_score")
+        @JsonAlias("appeal_score")
         int appealScore
 ) {}

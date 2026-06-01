@@ -1,12 +1,12 @@
 package com.adsimulator.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 /** Mirrors Python FinalAction — incoming snake_case from FastAPI. */
 public record FinalActionDto(
 
         boolean clicked,
 
-        @JsonProperty("action_reason")
+        @JsonAlias("action_reason")
         String actionReason
 ) {}

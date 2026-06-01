@@ -1,19 +1,19 @@
 package com.adsimulator.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 /** Mirrors Python CognitiveLoopResult — incoming snake_case from FastAPI. */
 public record CognitiveLoopResultDto(
 
-        @JsonProperty("persona_id")
+        @JsonAlias("persona_id")
         String personaId,
 
-        @JsonProperty("step1_unconscious_reaction")
+        @JsonAlias("step1_unconscious_reaction")
         UnconsciousReactionDto step1UnconsciousReaction,
 
-        @JsonProperty("step2_selfish_filtering")
+        @JsonAlias("step2_selfish_filtering")
         SelfishFilteringDto step2SelfishFiltering,
 
-        @JsonProperty("step3_final_action")
+        @JsonAlias("step3_final_action")
         FinalActionDto step3FinalAction
 ) {}

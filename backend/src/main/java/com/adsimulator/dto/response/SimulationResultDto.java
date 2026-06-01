@@ -1,6 +1,6 @@
 package com.adsimulator.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import java.util.List;
 
@@ -13,10 +13,10 @@ import java.util.List;
  */
 public record SimulationResultDto(
 
-        @JsonProperty("ad_id")
+        @JsonAlias("ad_id")
         String adId,
 
-        @JsonProperty("total_personas")
+        @JsonAlias("total_personas")
         int totalPersonas,
 
         List<CognitiveLoopResultDto> results,

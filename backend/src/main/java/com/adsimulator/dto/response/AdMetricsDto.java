@@ -1,6 +1,6 @@
 package com.adsimulator.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 /** Mirrors Python AdMetrics — incoming snake_case from FastAPI. */
 public record AdMetricsDto(
@@ -8,9 +8,9 @@ public record AdMetricsDto(
         double vtr,
         double ctr,
 
-        @JsonProperty("dropout_rate")
+        @JsonAlias("dropout_rate")
         double dropoutRate,
 
-        @JsonProperty("avg_appeal_score")
+        @JsonAlias("avg_appeal_score")
         double avgAppealScore
 ) {}

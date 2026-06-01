@@ -6,7 +6,7 @@ import logging
 import os
 from typing import List
 
-import httpx
+from groq import AsyncGroq, RateLimitError, AuthenticationError
 
 from .prompts import SYSTEM_PROMPT_TEMPLATE, USER_PROMPT_TEMPLATE
 from .schemas import (
@@ -19,11 +19,8 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-_API_KEY = os.getenv("GEMINI_API_KEY")
-_GEMINI_URL = (
-    "https://generativelanguage.googleapis.com"
-    "/v1beta/models/gemini-2.0-flash:generateContent"
-)
+_API_KEY = os.getenv("GROQ_API_KEY")
+_MODEL = "llama-3.3-70b-versatile"
 
 MAX_RETRIES = 3
 SCREENING_COUNT = 3
@@ -49,60 +46,37 @@ async def _simulate_one(
         drop_off_trigger=persona.drop_off_trigger,
     )
 
-    body = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"parts": [{"text": user}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.88,
-            "maxOutputTokens": 600,
-        },
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(
-                _GEMINI_URL,
-                params={"key": _API_KEY},
-                json=body,
-            )
+        client = AsyncGroq(api_key=_API_KEY)
+        response = await client.chat.completions.create(
+            model=_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.88,
+            max_tokens=600,
+            response_format={"type": "json_object"},
+        )
 
-        if r.status_code == 429:
-            if attempt >= MAX_RETRIES:
-                logger.error("Persona %s — gave up after rate limit retries", persona.persona_id)
-                return None
-            wait = 2 ** attempt * 5
-            logger.warning(
-                "Persona %s — 429 rate limit, waiting %ds (attempt %d)",
-                persona.persona_id, wait, attempt + 1,
-            )
-            await asyncio.sleep(wait)
-            return await _simulate_one(persona, ad_content, attempt + 1)
-
-        if r.status_code in (401, 403):
-            logger.error(
-                "Persona %s — Gemini auth error %d: %s",
-                persona.persona_id, r.status_code, r.text[:300],
-            )
-            return None
-
-        r.raise_for_status()
-
-        data = r.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise ValueError(
-                f"No candidates in Gemini response "
-                f"(promptFeedback={data.get('promptFeedback')})"
-            )
-        candidate = candidates[0]
-        if "content" not in candidate:
-            raise ValueError(
-                f"Candidate has no content "
-                f"(finishReason={candidate.get('finishReason')})"
-            )
-        text = candidate["content"]["parts"][0]["text"]
+        text = response.choices[0].message.content
         return CognitiveLoopResult(**json.loads(text))
+
+    except RateLimitError:
+        if attempt >= MAX_RETRIES:
+            logger.error("Persona %s — gave up after rate limit retries", persona.persona_id)
+            return None
+        wait = 2 ** attempt * 5
+        logger.warning(
+            "Persona %s — rate limit, waiting %ds (attempt %d)",
+            persona.persona_id, wait, attempt + 1,
+        )
+        await asyncio.sleep(wait)
+        return await _simulate_one(persona, ad_content, attempt + 1)
+
+    except AuthenticationError:
+        logger.error("Persona %s — Groq auth error: check GROQ_API_KEY", persona.persona_id)
+        return None
 
     except Exception as exc:
         if attempt < MAX_RETRIES:
@@ -133,21 +107,17 @@ async def run_cascade_simulation(
     for p in screening:
         result = await _simulate_one(p, ad_content)
         stage1.append(result)
-        await asyncio.sleep(1)  # 무료 티어 rate limit 방지
 
     stage2: list = []
     if remainder:
-        await asyncio.sleep(3)
         logger.info("ad_id=%s | Stage-2 full batch: %d personas", ad_id, len(remainder))
-        for p in remainder:
-            result = await _simulate_one(p, ad_content)
-            stage2.append(result)
-            await asyncio.sleep(1)
+        tasks = [_simulate_one(p, ad_content) for p in remainder]
+        stage2 = list(await asyncio.gather(*tasks))
 
     all_results = [r for r in (*stage1, *stage2) if r is not None]
 
     if not all_results:
-        raise RuntimeError("All persona simulations failed — check Gemini API key/quota")
+        raise RuntimeError("All persona simulations failed — check GROQ_API_KEY/quota")
 
     logger.info(
         "ad_id=%s | Complete: %d/%d succeeded", ad_id, len(all_results), len(personas)
