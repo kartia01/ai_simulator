@@ -9,8 +9,9 @@ load_dotenv(override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from groq import AuthenticationError
 
-from app.agent import run_cascade_simulation
+from app.agent import run_cascade_simulation, _get_client
 from app.schemas import SimulationRequest, SimulationResponse
 
 logging.basicConfig(
@@ -59,6 +60,9 @@ async def simulate(request: SimulationRequest):
             ad_content=request.ad_content,
             ad_id=request.ad_id,
             ad_type=request.ad_type,
+            image_base64=request.image_base64,
+            video_base64=request.video_base64,
+            media_content_type=request.media_content_type,
         )
         logger.info(
             "Simulation DONE  ad_id=%s  VTR=%.1f%%  CTR=%.1f%%",
@@ -80,20 +84,16 @@ async def health():
 
 @app.get("/health/groq")
 async def health_groq():
-    from groq import AsyncGroq, AuthenticationError
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
+    if not os.getenv("GROQ_API_KEY"):
         return {"status": "error", "detail": "GROQ_API_KEY not set"}
 
     try:
-        client = AsyncGroq(api_key=key)
-        response = await client.chat.completions.create(
+        response = await _get_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": "Reply with the single word: OK"}],
             max_tokens=10,
         )
-        text = response.choices[0].message.content
-        return {"status": "ok", "groq_reply": text.strip()}
+        return {"status": "ok", "groq_reply": response.choices[0].message.content.strip()}
     except AuthenticationError:
         return {"status": "error", "detail": "Invalid GROQ_API_KEY"}
     except Exception as exc:

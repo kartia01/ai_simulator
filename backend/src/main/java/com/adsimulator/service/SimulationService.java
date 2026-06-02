@@ -4,14 +4,22 @@ import com.adsimulator.client.FastApiClient;
 import com.adsimulator.dto.fastapi.PersonaPayload;
 import com.adsimulator.dto.fastapi.SimulationPayload;
 import com.adsimulator.dto.request.AdSimulationRequest;
+import com.adsimulator.dto.response.CognitiveLoopResultDto;
 import com.adsimulator.dto.response.SimulationResultDto;
 import com.adsimulator.entity.Persona;
+import com.adsimulator.entity.PersonaResult;
+import com.adsimulator.entity.SimulationRun;
 import com.adsimulator.repository.PersonaRepository;
+import com.adsimulator.repository.SimulationRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class SimulationService {
@@ -20,10 +28,13 @@ public class SimulationService {
 
     private final PersonaRepository personaRepo;
     private final FastApiClient fastApiClient;
+    private final SimulationRunRepository simulationRunRepo;
 
-    public SimulationService(PersonaRepository personaRepo, FastApiClient fastApiClient) {
+    public SimulationService(PersonaRepository personaRepo, FastApiClient fastApiClient,
+                             SimulationRunRepository simulationRunRepo) {
         this.personaRepo = personaRepo;
         this.fastApiClient = fastApiClient;
+        this.simulationRunRepo = simulationRunRepo;
     }
 
     /**
@@ -33,6 +44,7 @@ public class SimulationService {
      *  3. Fire async HTTP request to AI Engine
      *  4. Block and return the structured result to the controller
      */
+    @Transactional
     public SimulationResultDto runSimulation(AdSimulationRequest req) {
         List<Persona> personas = resolvePersonas(req);
 
@@ -42,16 +54,69 @@ public class SimulationService {
 
         log.info("Running simulation adId={} with {} personas", req.adId(), personas.size());
 
+        Map<String, String> idToName = personas.stream()
+                .collect(Collectors.toMap(p -> p.getId().toString(), Persona::getName));
+
+        boolean isVideo = req.mediaContentType() != null && req.mediaContentType().startsWith("video/");
+        String imageBase64 = (!isVideo) ? req.mediaBase64() : null;
+        String videoBase64 = isVideo ? req.mediaBase64() : null;
+
         SimulationPayload payload = new SimulationPayload(
                 req.adId(),
-                req.adContent(),
+                req.adContent() != null ? req.adContent() : "",
                 req.adType() != null ? req.adType() : "IMAGE",
-                personas.stream().map(this::toPayload).toList()
+                personas.stream().map(this::toPayload).toList(),
+                imageBase64,
+                videoBase64,
+                req.mediaContentType()
         );
 
-        // block() is intentional here — the controller endpoint is synchronous (MVC).
-        // For a reactive controller, return the Mono directly from fastApiClient.simulate().
-        return fastApiClient.simulate(payload).block();
+        SimulationResultDto raw = fastApiClient.simulate(payload).block();
+
+        List<CognitiveLoopResultDto> enriched = raw.results().stream()
+                .map(r -> new CognitiveLoopResultDto(
+                        idToName.getOrDefault(r.personaId(), r.personaId()),
+                        r.step1UnconsciousReaction(),
+                        r.step2SelfishFiltering(),
+                        r.step3FinalAction()
+                ))
+                .toList();
+
+        SimulationResultDto result = new SimulationResultDto(raw.adId(), raw.totalPersonas(), enriched, raw.metrics());
+        saveRun(req, result);
+        return result;
+    }
+
+    private void saveRun(AdSimulationRequest req, SimulationResultDto result) {
+        SimulationRun run = new SimulationRun();
+        run.setAdId(result.adId());
+        run.setAdContent(req.adContent());
+        run.setAdType(req.adType() != null ? req.adType() : "IMAGE");
+        run.setRunAt(LocalDateTime.now());
+        run.setTotalPersonas(result.totalPersonas());
+        run.setVtr(result.metrics().vtr());
+        run.setCtr(result.metrics().ctr());
+        run.setDropoutRate(result.metrics().dropoutRate());
+        run.setAvgAppealScore(result.metrics().avgAppealScore());
+
+        List<PersonaResult> personaResults = result.results().stream()
+                .map(r -> {
+                    PersonaResult pr = new PersonaResult();
+                    pr.setRun(run);
+                    pr.setPersonaName(r.personaId());
+                    pr.setAppealScore(r.step1UnconsciousReaction().appealScore());
+                    pr.setKeywords(String.join(",", r.step1UnconsciousReaction().keywords()));
+                    pr.setDroppedOut(r.step2SelfishFiltering().isDroppedOut());
+                    pr.setSelfishReason(r.step2SelfishFiltering().reason());
+                    pr.setClicked(r.step3FinalAction().clicked());
+                    pr.setActionReason(r.step3FinalAction().actionReason());
+                    return pr;
+                })
+                .toList();
+
+        run.getPersonaResults().addAll(personaResults);
+        simulationRunRepo.save(run);
+        log.info("Saved simulation run id={} adId={}", run.getId(), run.getAdId());
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -71,7 +136,11 @@ public class SimulationService {
                 p.getContext(),
                 p.getDropOffTrigger(),
                 p.getMbti(),
-                p.getInterests()
+                p.getInterests(),
+                p.getIncomeLevel(),
+                p.getPurchasePattern(),
+                p.getBrandSensitivity(),
+                p.getTypicalAdBehavior()
         );
     }
 }

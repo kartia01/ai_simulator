@@ -39,12 +39,12 @@
 ┌─────────────────────────────────────────────────────────┐
 │  Python FastAPI  :8000  (AI Agent Engine)               │
 │  - 각 페르소나에 시스템 프롬프트 주입                    │
-│  - OpenAI gpt-4o-mini 병렬 호출                         │
+│  - Groq llama-3.3-70b-versatile 병렬 호출               │
 │  - 3단계 인지 루프 결과 반환                             │
 └────────────────────┬────────────────────────────────────┘
                      │  Chat Completions API
                      ▼
-              OpenAI / Anthropic
+                   Groq
 ```
 
 ---
@@ -65,11 +65,11 @@
     POST /simulate
     { ad_id, ad_content, ad_type, personas: [...30명...] }
 
-[5] FastAPI → OpenAI  (페르소나마다 병렬 호출)
+[5] FastAPI → Groq  (페르소나마다 병렬 호출)
     ┌ Stage 1: 대표 3명 먼저 스크리닝 (비용 최적화)
     └ Stage 2: 나머지 27명 asyncio.gather로 병렬 실행
 
-[6] OpenAI → FastAPI
+[6] Groq → FastAPI
     각 페르소나마다 3단계 인지 루프 JSON 반환
 
 [7] FastAPI → Spring Boot
@@ -124,7 +124,7 @@
 |------|------|
 | `app/schemas.py` | Pydantic 입출력 스키마 정의 (3단계 인지 루프 구조 강제) |
 | `app/prompts.py` | 시스템 프롬프트 템플릿 — "AI 기업 말투" 차단 규칙 포함 |
-| `app/agent.py` | Cascade 파이프라인 + OpenAI 병렬 호출 + 메트릭 계산 |
+| `app/agent.py` | Cascade 파이프라인 + Groq 병렬 호출 + 메트릭 계산 |
 | `main.py` | FastAPI 앱 진입점, `/simulate` `/health` 엔드포인트 |
 
 ---
@@ -272,27 +272,16 @@ React에는 Spring Boot가 Jackson 기본값(camelCase)으로 재직렬화해서
 - Python 3.11+
 - Java 21 + Maven
 - Node.js 20+
-- PostgreSQL (또는 Docker)
-- OpenAI API Key
-
-### PostgreSQL (Docker)
-
-```bash
-docker run -d \
-  --name ad-simulator-db \
-  -e POSTGRES_DB=ad_simulator \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  postgres:16
-```
+- Groq API Key (console.groq.com)
+- NeonDB 프로젝트 (neon.tech)
 
 ### AI Engine (Python FastAPI)
 
 ```bash
 cd ai-engine
 pip install -r requirements.txt
-OPENAI_API_KEY=sk-... uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
+# GROQ_API_KEY는 ai-engine/.env에 설정
 ```
 
 ### Spring Boot 백엔드

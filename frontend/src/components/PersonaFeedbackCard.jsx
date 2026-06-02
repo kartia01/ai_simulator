@@ -1,8 +1,3 @@
-/**
- * Individual persona result card — shows the complete 3-step cognitive journey
- * for one simulated human. Marketers can read these to understand WHY the ad
- * succeeded or failed for each demographic slice.
- */
 export default function PersonaFeedbackCard({ result, persona }) {
   const { step1UnconsciousReaction, step2SelfishFiltering, step3FinalAction } = result;
   const dropped = step2SelfishFiltering.isDroppedOut;
@@ -10,7 +5,6 @@ export default function PersonaFeedbackCard({ result, persona }) {
 
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-      {/* Persona header */}
       <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
         <div>
           <span className="font-bold text-gray-100 text-sm">
@@ -18,11 +12,10 @@ export default function PersonaFeedbackCard({ result, persona }) {
           </span>
           {persona && (
             <span className="text-xs text-gray-500 ml-2">
-              {persona.age}y · {persona.job}
+              {persona.age}세 · {persona.job}
             </span>
           )}
         </div>
-        {/* Final outcome badge */}
         <span
           className={`text-xs font-bold px-2.5 py-1 rounded-full ${
             clicked
@@ -32,15 +25,14 @@ export default function PersonaFeedbackCard({ result, persona }) {
               : "bg-gray-700 text-gray-300"
           }`}
         >
-          {clicked ? "✓ CLICKED" : dropped ? "✗ DROPPED" : "– IGNORED"}
+          {clicked ? "✓ 클릭" : dropped ? "✗ 이탈" : "– 무시"}
         </span>
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Step 1 */}
         <div>
           <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">
-            Step 1 · Unconscious Reaction
+            1단계 · 무의식적 반응
           </p>
           <div className="flex flex-wrap gap-2 mb-2">
             {step1UnconsciousReaction.keywords.map((kw) => (
@@ -52,7 +44,6 @@ export default function PersonaFeedbackCard({ result, persona }) {
               </span>
             ))}
           </div>
-          {/* Appeal score pips */}
           <div className="flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((n) => (
               <div
@@ -70,10 +61,9 @@ export default function PersonaFeedbackCard({ result, persona }) {
           </div>
         </div>
 
-        {/* Step 2 */}
         <div>
           <p className="text-xs font-bold text-amber-400 uppercase tracking-widest mb-2">
-            Step 2 · Selfish Filtering
+            2단계 · 자기중심적 필터링
           </p>
           <blockquote
             className={`text-sm italic border-l-2 pl-3 ${
@@ -86,20 +76,18 @@ export default function PersonaFeedbackCard({ result, persona }) {
           </blockquote>
         </div>
 
-        {/* Step 3 */}
         <div>
           <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-2">
-            Step 3 · Final Action
+            3단계 · 최종 행동
           </p>
           <p className="text-sm text-gray-300">
             {step3FinalAction.actionReason}
           </p>
         </div>
 
-        {/* Context pill (if persona available) */}
         {persona?.context && (
           <p className="text-xs text-gray-600 border-t border-gray-800 pt-3">
-            Context: {persona.context}
+            상황: {persona.context}
           </p>
         )}
       </div>

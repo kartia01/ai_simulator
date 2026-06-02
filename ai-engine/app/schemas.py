@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,7 +8,6 @@ from pydantic import BaseModel, Field, field_validator
 class AdType(str, Enum):
     VIDEO = "VIDEO"
     IMAGE = "IMAGE"
-    CAROUSEL = "CAROUSEL"
 
 
 # ── Step 1 ────────────────────────────────────────────────────────────────────
@@ -17,7 +15,7 @@ class AdType(str, Enum):
 class UnconsciousReaction(BaseModel):
     """1.5초 안에 뇌에 박힌 첫인상"""
 
-    keywords: List[str] = Field(
+    keywords: list[str] = Field(
         description="Exactly 3 raw instinctive words — no analysis, no politeness"
     )
     appeal_score: int = Field(ge=1, le=5, description="Gut-feel score 1-5")
@@ -75,7 +73,7 @@ class AdMetrics(BaseModel):
 class SimulationResponse(BaseModel):
     ad_id: str
     total_personas: int
-    results: List[CognitiveLoopResult]
+    results: list[CognitiveLoopResult]
     metrics: AdMetrics
 
 
@@ -91,15 +89,43 @@ class PersonaInput(BaseModel):
     drop_off_trigger: str = Field(
         description="Specific things that make you instantly scroll away"
     )
-    mbti: Optional[str] = None
-    interests: Optional[List[str]] = None
+    mbti: str | None = None
+    interests: list[str] | None = None
+    income_level: str | None = Field(
+        default=None,
+        description="소득 수준 — e.g. '저소득', '중산층', '고소득'"
+    )
+    purchase_pattern: str | None = Field(
+        default=None,
+        description="구매 성향 — e.g. '충동구매 잦음', '비교 후 구매', '거의 안 삼'"
+    )
+    brand_sensitivity: str | None = Field(
+        default=None,
+        description="브랜드 민감도 — e.g. '브랜드 중시', '가격 중시', '무관심'"
+    )
+    typical_ad_behavior: str | None = Field(
+        default=None,
+        description="평소 광고 반응 패턴 — e.g. '광고 거의 클릭 안 함, 할인 정보만 반응'"
+    )
 
 
 class SimulationRequest(BaseModel):
     ad_id: str
     ad_content: str = Field(
-        min_length=10,
-        description="Full ad copy: headline, body, CTA, visual description"
+        default="",
+        description="Full ad copy: headline, body, CTA, visual description (optional when media provided)"
     )
     ad_type: AdType = AdType.IMAGE
-    personas: List[PersonaInput] = Field(min_length=1, max_length=50)
+    personas: list[PersonaInput] = Field(min_length=1, max_length=50)
+    image_base64: str | None = Field(
+        default=None,
+        description="Base64-encoded image file (JPEG/PNG/GIF/WEBP)"
+    )
+    video_base64: str | None = Field(
+        default=None,
+        description="Base64-encoded video file (MP4/MOV/AVI)"
+    )
+    media_content_type: str | None = Field(
+        default=None,
+        description="MIME type of uploaded media, e.g. 'image/jpeg', 'video/mp4'"
+    )

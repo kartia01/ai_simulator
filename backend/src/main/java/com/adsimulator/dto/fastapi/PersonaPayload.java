@@ -21,5 +21,17 @@ public record PersonaPayload(
 
         String mbti,
 
-        List<String> interests
+        List<String> interests,
+
+        @JsonProperty("income_level")
+        String incomeLevel,
+
+        @JsonProperty("purchase_pattern")
+        String purchasePattern,
+
+        @JsonProperty("brand_sensitivity")
+        String brandSensitivity,
+
+        @JsonProperty("typical_ad_behavior")
+        String typicalAdBehavior
 ) {}

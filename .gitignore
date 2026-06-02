@@ -7,3 +7,16 @@ Thumbs.db
 
 # 환경변수
 .env
+
+# Java / Maven 빌드 결과물
+backend/target/
+
+# Next.js 빌드 결과물
+frontend/.next/
+frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+ai-engine/=*

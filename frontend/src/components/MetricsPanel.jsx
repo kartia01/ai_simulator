@@ -1,37 +1,32 @@
-/**
- * Top KPI bar — 4 metric cards: VTR, CTR, Dropout, Avg Appeal.
- * Color thresholds are calibrated against industry benchmarks defined in AdProject.md.
- */
 export default function MetricsPanel({ metrics }) {
   const cards = [
     {
       label: "VTR",
-      sublabel: "View-Through Rate",
+      sublabel: "조회 완료율",
       value: `${metrics.vtr}%`,
       good: metrics.vtr >= 25,
-      tip: "≥ 25% avg  |  ≥ 35% = great",
+      tip: "≥ 25% 평균  |  ≥ 35% = 우수",
     },
     {
       label: "CTR",
-      sublabel: "Click-Through Rate",
+      sublabel: "클릭률",
       value: `${metrics.ctr}%`,
       good: metrics.ctr >= 1.5,
-      tip: "≥ 1.5% avg  |  ≥ 3% = great",
+      tip: "≥ 1.5% 평균  |  ≥ 3% = 우수",
     },
     {
-      label: "DROP",
-      sublabel: "Step-2 Dropout Rate",
+      label: "이탈",
+      sublabel: "2단계 이탈률",
       value: `${metrics.dropoutRate}%`,
       good: metrics.dropoutRate < 70,
-      invert: true,
-      tip: "< 70% = acceptable",
+      tip: "< 70% = 허용 범위",
     },
     {
-      label: "APPEAL",
-      sublabel: "Avg Gut-Feel Score",
+      label: "매력도",
+      sublabel: "평균 직감 점수",
       value: `${metrics.avgAppealScore} / 5`,
       good: metrics.avgAppealScore >= 3,
-      tip: "≥ 3.0 avg  |  ≥ 4.0 = great",
+      tip: "≥ 3.0 평균  |  ≥ 4.0 = 우수",
     },
   ];
 

@@ -18,5 +18,14 @@ public record SimulationPayload(
         @JsonProperty("ad_type")
         String adType,
 
-        List<PersonaPayload> personas
+        List<PersonaPayload> personas,
+
+        @JsonProperty("image_base64")
+        String imageBase64,
+
+        @JsonProperty("video_base64")
+        String videoBase64,
+
+        @JsonProperty("media_content_type")
+        String mediaContentType
 ) {}

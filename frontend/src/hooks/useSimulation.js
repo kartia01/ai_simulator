@@ -1,16 +1,6 @@
 import { useState, useCallback } from "react";
 import { runSimulation } from "../api/simulationApi";
 
-/**
- * Manages simulation state and exposes a `simulate` trigger.
- *
- * Returns:
- *  result    — SimulationResult | null
- *  loading   — boolean
- *  error     — string | null
- *  simulate  — (payload) => Promise<void>
- *  reset     — () => void
- */
 export function useSimulation() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
