@@ -102,38 +102,33 @@ async def _analyze_video(ad_content: str, video_base64: str) -> str:
     frame_labels = ["초반", "중반", "후반"]
     analyses: list[str] = []
 
-    try:
-        for frame_b64, label in zip(frames_b64, frame_labels):
-            try:
-                response = await _get_client().chat.completions.create(
-                    model=_VISION_MODEL,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
-                                },
-                                {
-                                    "type": "text",
-                                    "text": (
-                                        f"이 영상 광고의 {label} 장면입니다. "
-                                        "화면에 보이는 시각적 요소와 텍스트를 한국어로 간략히 설명해주세요."
-                                    ),
-                                },
-                            ],
-                        }
-                    ],
-                    max_tokens=300,
-                )
-                analyses.append(f"[{label}] {response.choices[0].message.content.strip()}")
-            except Exception as exc:
-                logger.warning("Frame [%s] analysis failed: %s", label, exc)
-
-    except Exception as exc:
-        logger.warning("Video analysis failed: %s — falling back to ad_content", exc)
-        return ad_content
+    for frame_b64, label in zip(frames_b64, frame_labels):
+        try:
+            response = await _get_client().chat.completions.create(
+                model=_VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"이 영상 광고의 {label} 장면입니다. "
+                                    "화면에 보이는 시각적 요소와 텍스트를 한국어로 간략히 설명해주세요."
+                                ),
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=300,
+            )
+            analyses.append(f"[{label}] {response.choices[0].message.content.strip()}")
+        except Exception as exc:
+            logger.warning("Frame [%s] analysis failed: %s", label, exc)
 
     if not analyses:
         return ad_content

@@ -13,6 +13,8 @@ import com.adsimulator.repository.PersonaRepository;
 import com.adsimulator.repository.SimulationRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,12 @@ public class SimulationService {
     private final FastApiClient fastApiClient;
     private final SimulationRunRepository simulationRunRepo;
 
+    // 자기 주입 — self.resolvePersonas/saveRun 호출 시 Spring 프록시를 통해
+    // @Transactional이 실제로 적용되도록 한다. @Lazy로 순환 의존성을 방지한다.
+    @Lazy
+    @Autowired
+    private SimulationService self;
+
     public SimulationService(PersonaRepository personaRepo, FastApiClient fastApiClient,
                              SimulationRunRepository simulationRunRepo) {
         this.personaRepo = personaRepo;
@@ -44,9 +52,10 @@ public class SimulationService {
      *  3. Fire async HTTP request to AI Engine
      *  4. Block and return the structured result to the controller
      */
-    @Transactional
+    // @Transactional 범위를 DB 저장으로만 제한 — FastAPI 호출(최대 300초)을 트랜잭션 밖에 둬야
+    // 커넥션 풀이 고갈되지 않는다. resolvePersonas는 readOnly 트랜잭션으로, saveRun은 별도 트랜잭션으로 처리.
     public SimulationResultDto runSimulation(AdSimulationRequest req) {
-        List<Persona> personas = resolvePersonas(req);
+        List<Persona> personas = self.resolvePersonas(req);
 
         if (personas.isEmpty()) {
             throw new IllegalArgumentException("No personas found — seed the database first");
@@ -83,14 +92,15 @@ public class SimulationService {
                 .toList();
 
         SimulationResultDto result = new SimulationResultDto(raw.adId(), raw.totalPersonas(), enriched, raw.metrics());
-        saveRun(req, result);
+        self.saveRun(req, result);
         return result;
     }
 
-    private void saveRun(AdSimulationRequest req, SimulationResultDto result) {
+    @Transactional
+    public void saveRun(AdSimulationRequest req, SimulationResultDto result) {
         SimulationRun run = new SimulationRun();
         run.setAdId(result.adId());
-        run.setAdContent(req.adContent());
+        run.setAdContent(req.adContent() != null ? req.adContent() : "");
         run.setAdType(req.adType() != null ? req.adType() : "IMAGE");
         run.setRunAt(LocalDateTime.now());
         run.setTotalPersonas(result.totalPersonas());
@@ -121,7 +131,8 @@ public class SimulationService {
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    private List<Persona> resolvePersonas(AdSimulationRequest req) {
+    @Transactional(readOnly = true)
+    public List<Persona> resolvePersonas(AdSimulationRequest req) {
         if (req.personaIds() == null || req.personaIds().isEmpty()) {
             return personaRepo.findAll();
         }
@@ -131,8 +142,10 @@ public class SimulationService {
     private PersonaPayload toPayload(Persona p) {
         return new PersonaPayload(
                 p.getId().toString(),
+                p.getName(),
                 p.getAge(),
                 p.getJob(),
+                p.getPlatform(),
                 p.getContext(),
                 p.getDropOffTrigger(),
                 p.getMbti(),
@@ -140,7 +153,9 @@ public class SimulationService {
                 p.getIncomeLevel(),
                 p.getPurchasePattern(),
                 p.getBrandSensitivity(),
-                p.getTypicalAdBehavior()
+                p.getTypicalAdBehavior(),
+                p.getValueKeywords(),
+                p.getEmotionalState()
         );
     }
 }

@@ -24,7 +24,7 @@ public class SimulationRun {
     @Column(name = "ad_id", nullable = false)
     private String adId;
 
-    @Column(name = "ad_content", nullable = false, length = 2000)
+    @Column(name = "ad_content", length = 4000)
     private String adContent;
 
     @Column(name = "ad_type", nullable = false)

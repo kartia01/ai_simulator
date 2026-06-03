@@ -8,13 +8,25 @@ import re
 
 from groq import AsyncGroq, RateLimitError, AuthenticationError
 
-from .prompts import SYSTEM_PROMPT_TEMPLATE, USER_PROMPT_TEMPLATE, build_optional_profile
+from .prompts import (
+    SYSTEM_PROMPT_TEMPLATE,
+    STEP1_USER_PROMPT,
+    STEP2_USER_PROMPT,
+    STEP3_USER_PROMPT,
+    _STEP3_DROPPED,
+    _STEP3_STAYED,
+    build_profile_block,
+    build_platform_behavior,
+)
 from .schemas import (
     AdMetrics,
     AdType,
     CognitiveLoopResult,
+    FinalAction,
     PersonaInput,
+    SelfishFiltering,
     SimulationResponse,
+    UnconsciousReaction,
 )
 from .vision import build_visual_ad_description
 
@@ -41,14 +53,30 @@ def _get_client() -> AsyncGroq:
 
 
 def _fix_logic_errors(result: CognitiveLoopResult) -> CognitiveLoopResult:
-    """이탈했는데 클릭 True인 모순을 Python 레벨에서 보정한다."""
-    if result.step2_selfish_filtering.is_dropped_out and result.step3_final_action.clicked:
-        logger.warning(
-            "Persona %s — 로직 모순 감지(이탈=True, 클릭=True) → 클릭 False로 보정",
-            result.persona_id,
-        )
-        result.step3_final_action.clicked = False
-        result.step3_final_action.action_reason = "그냥 넘겼다"
+    """단계 간 논리 모순을 보정한다."""
+    step1 = result.step1_unconscious_reaction
+    step2 = result.step2_selfish_filtering
+    step3 = result.step3_final_action
+
+    # 점수 최저(1)인데 이탈 안 함
+    if step1.appeal_score == 1 and not step2.is_dropped_out:
+        logger.warning("Persona %s — 점수=1인데 이탈=False 모순 → 이탈 True 보정", result.persona_id)
+        step2.is_dropped_out = True
+        step3.clicked = False
+        step3.action_reason = "눈길도 안 갔다"
+
+    # 이탈했는데 클릭 True
+    if step2.is_dropped_out and step3.clicked:
+        logger.warning("Persona %s — 이탈=True·클릭=True 모순 → 클릭 False 보정", result.persona_id)
+        step3.clicked = False
+        step3.action_reason = "그냥 넘겼다"
+
+    # 점수 낮은데 클릭 True
+    if step1.appeal_score <= 2 and step3.clicked:
+        logger.warning("Persona %s — 점수≤2인데 클릭=True 모순 → 클릭 False 보정", result.persona_id)
+        step3.clicked = False
+        step3.action_reason = "별로였다"
+
     return result
 
 
@@ -61,7 +89,23 @@ def _has_foreign_text(result: CognitiveLoopResult) -> bool:
     return any(_KOREAN_ONLY.search(t) for t in texts)
 
 
-# ── Single persona ─────────────────────────────────────────────────────────────
+# ── Groq 단일 호출 헬퍼 ────────────────────────────────────────────────────────
+
+async def _call_groq(system: str, user: str) -> str:
+    response = await _get_client().chat.completions.create(
+        model=_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=_TEMPERATURE,
+        max_tokens=200,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content
+
+
+# ── Single persona (3단계 체인 호출) ──────────────────────────────────────────
 
 async def _simulate_one(
     persona: PersonaInput,
@@ -69,33 +113,60 @@ async def _simulate_one(
     attempt: int = 0,
 ) -> CognitiveLoopResult | None:
     system = SYSTEM_PROMPT_TEMPLATE.format(
+        name=persona.name,
         age=persona.age,
         job=persona.job,
+        emotional_state=persona.emotional_state or "보통",
+        platform=persona.platform or "스마트폰",
+        platform_behavior=build_platform_behavior(persona.platform),
         context=persona.context,
         drop_off_trigger=persona.drop_off_trigger,
-        optional_profile=build_optional_profile(persona),
+        profile_block=build_profile_block(persona),
     )
-    user = USER_PROMPT_TEMPLATE.format(
-        ad_content=ad_content,
-        persona_id=persona.persona_id,
-        context=persona.context,
-        drop_off_trigger=persona.drop_off_trigger,
-    )
+
+    # .format() 호출 시 사용자 입력/LLM 출력의 {} 가 format placeholder로 오해되는 것을 방지
+    safe_ad_content = ad_content.replace("{", "{{").replace("}", "}}")
 
     try:
-        response = await _get_client().chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=_TEMPERATURE,
-            max_tokens=600,
-            response_format={"type": "json_object"},
+        # Step 1 — 1.5초 본능 반응
+        step1_raw = await _call_groq(
+            system,
+            STEP1_USER_PROMPT.format(ad_content=safe_ad_content),
         )
+        step1 = UnconsciousReaction(**json.loads(step1_raw))
 
-        text = response.choices[0].message.content
-        result = _fix_logic_errors(CognitiveLoopResult(**json.loads(text)))
+        # Step 2 — Step 1 결과를 받아 자기중심 필터링
+        step2_raw = await _call_groq(
+            system,
+            STEP2_USER_PROMPT.format(
+                keywords=", ".join(step1.keywords),
+                appeal_score=step1.appeal_score,
+                context=persona.context,
+                drop_off_trigger=persona.drop_off_trigger,
+            ),
+        )
+        step2 = SelfishFiltering(**json.loads(step2_raw))
+
+        # Step 3 — Step 1+2 결과를 받아 최종 결정
+        safe_reason = step2.reason.replace("{", "{{").replace("}", "}}")
+        step3_raw = await _call_groq(
+            system,
+            STEP3_USER_PROMPT.format(
+                keywords=", ".join(step1.keywords),
+                appeal_score=step1.appeal_score,
+                is_dropped_out=step2.is_dropped_out,
+                reason=safe_reason,
+                dropout_instruction=_STEP3_DROPPED if step2.is_dropped_out else _STEP3_STAYED,
+            ),
+        )
+        step3 = FinalAction(**json.loads(step3_raw))
+
+        result = _fix_logic_errors(CognitiveLoopResult(
+            persona_id=persona.persona_id,
+            step1_unconscious_reaction=step1,
+            step2_selfish_filtering=step2,
+            step3_final_action=step3,
+        ))
 
         if _has_foreign_text(result):
             if attempt < MAX_RETRIES:
@@ -149,7 +220,8 @@ async def run_cascade_simulation(
     video_base64: str | None = None,
     media_content_type: str | None = None,
 ) -> SimulationResponse:
-    # 미디어가 있으면 비전 모델로 광고 설명을 먼저 생성한다
+    logger.info("ad_id=%s | ad_type=%s | personas=%d", ad_id, ad_type, len(personas))
+
     if image_base64 or video_base64:
         logger.info("ad_id=%s | Analyzing media with vision model…", ad_id)
         ad_content = await build_visual_ad_description(

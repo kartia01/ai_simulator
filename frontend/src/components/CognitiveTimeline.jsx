@@ -62,7 +62,7 @@ export default function CognitiveTimeline({ metrics, totalPersonas }) {
             {i < stages.length - 1 && (
               <div className="flex items-center gap-2 mt-3 ml-2">
                 <span className="text-gray-600 text-xs">
-                  ▼ {(100 - stages[i + 1].pct).toFixed(1)}% 여기서 이탈
+                  ▼ {(stages[i].pct - stages[i + 1].pct).toFixed(1)}% 여기서 이탈
                 </span>
               </div>
             )}

@@ -64,4 +64,16 @@ public class Persona {
     /** 평소 광고 반응 패턴 — e.g. "광고 거의 클릭 안 함, 할인 정보만 반응" */
     @Column(name = "typical_ad_behavior", length = 500)
     private String typicalAdBehavior;
+
+    /** 주로 광고를 접하는 플랫폼 — e.g. "인스타그램", "유튜브", "틱톡", "네이버" */
+    @Column
+    private String platform;
+
+    /** 광고에서 눈길을 끄는 키워드 — e.g. "가성비, 무료배송, 한정특가" */
+    @Column(name = "value_keywords", length = 300)
+    private String valueKeywords;
+
+    /** 현재 감정 상태 — e.g. "스트레스 높음", "평온", "피곤함", "기분 좋음", "무료함" */
+    @Column(name = "emotional_state")
+    private String emotionalState;
 }

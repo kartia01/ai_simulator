@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSimulation } from "../hooks/useSimulation";
 import MetricsPanel from "./MetricsPanel";
 import CognitiveTimeline from "./CognitiveTimeline";
@@ -68,6 +68,13 @@ export default function SimulationDashboard() {
     setPreviewUrl(null);
     setFileError(null);
   };
+
+  // previewUrl이 교체되거나 컴포넌트가 언마운트될 때 메모리 누수 방지
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const isVideo = useMemo(
     () => mediaFile != null && ACCEPTED_VIDEO.includes(mediaFile.type),

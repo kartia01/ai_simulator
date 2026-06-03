@@ -22,7 +22,7 @@ class UnconsciousReaction(BaseModel):
 
     @field_validator("keywords")
     @classmethod
-    def exactly_three(cls, v: List[str]) -> List[str]:
+    def exactly_three(cls, v: list[str]) -> list[str]:
         if len(v) != 3:
             raise ValueError(f"Need exactly 3 keywords, got {len(v)}")
         return v
@@ -81,8 +81,13 @@ class SimulationResponse(BaseModel):
 
 class PersonaInput(BaseModel):
     persona_id: str
+    name: str
     age: int = Field(ge=13, le=80)
     job: str
+    platform: str | None = Field(
+        default=None,
+        description="광고를 보는 플랫폼 — e.g. '인스타그램', '유튜브', '틱톡', '네이버'"
+    )
     context: str = Field(
         description="Situational context right now, e.g. 'exhausted on packed subway after 10-hour shift'"
     )
@@ -106,6 +111,14 @@ class PersonaInput(BaseModel):
     typical_ad_behavior: str | None = Field(
         default=None,
         description="평소 광고 반응 패턴 — e.g. '광고 거의 클릭 안 함, 할인 정보만 반응'"
+    )
+    value_keywords: str | None = Field(
+        default=None,
+        description="광고에서 반응하는 키워드 — e.g. '가성비, 무료배송, 한정특가'"
+    )
+    emotional_state: str | None = Field(
+        default=None,
+        description="현재 감정 상태 — e.g. '스트레스 높음', '평온', '피곤함', '기분 좋음', '무료함'"
     )
 
 

@@ -31,7 +31,6 @@ public class WebClientConfig {
                 );
 
         ExchangeStrategies strategies = ExchangeStrategies.builder()
-                .codecs(ClientCodecConfigurer::defaultCodecs)
                 .codecs(cfg -> cfg.defaultCodecs().maxInMemorySize(CODEC_MAX_BYTES))
                 .build();
 

@@ -12,8 +12,12 @@ public record PersonaPayload(
         @JsonProperty("persona_id")
         String personaId,
 
+        String name,
         int age,
         String job,
+
+        String platform,
+
         String context,
 
         @JsonProperty("drop_off_trigger")
@@ -33,5 +37,11 @@ public record PersonaPayload(
         String brandSensitivity,
 
         @JsonProperty("typical_ad_behavior")
-        String typicalAdBehavior
+        String typicalAdBehavior,
+
+        @JsonProperty("value_keywords")
+        String valueKeywords,
+
+        @JsonProperty("emotional_state")
+        String emotionalState
 ) {}
