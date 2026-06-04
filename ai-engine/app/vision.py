@@ -5,20 +5,26 @@ import logging
 import os
 import tempfile
 
-from groq import AsyncGroq
+# from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-_API_KEY = os.getenv("GROQ_API_KEY")
+# _VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+_VISION_MODEL = "gpt-4o-mini"
+# _API_KEY = os.getenv("GROQ_API_KEY")
+_API_KEY = os.getenv("OPENAI_API_KEY")
 
-_client: AsyncGroq | None = None
+# _client: AsyncGroq | None = None
+_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncGroq:
+# def _get_client() -> AsyncGroq:
+def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncGroq(api_key=_API_KEY)
+        # _client = AsyncGroq(api_key=_API_KEY)
+        _client = AsyncOpenAI(api_key=_API_KEY)
     return _client
 
 

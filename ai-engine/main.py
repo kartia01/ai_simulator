@@ -9,7 +9,8 @@ load_dotenv(override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from groq import AuthenticationError
+# from groq import AuthenticationError
+from openai import AuthenticationError
 
 from app.agent import run_cascade_simulation, _get_client
 from app.schemas import SimulationRequest, SimulationResponse
@@ -23,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not os.getenv("GROQ_API_KEY"):
-        logger.warning("GROQ_API_KEY is not set — all simulations will fail with 502")
+    if not os.getenv("OPENAI_API_KEY"):
+        logger.warning("OPENAI_API_KEY is not set — all simulations will fail with 502")
     logger.info("Ad Simulator AI Engine — startup")
     yield
     logger.info("Ad Simulator AI Engine — shutdown")
@@ -82,19 +83,19 @@ async def health():
     return {"status": "ok", "service": "ai-engine"}
 
 
-@app.get("/health/groq")
-async def health_groq():
-    if not os.getenv("GROQ_API_KEY"):
-        return {"status": "error", "detail": "GROQ_API_KEY not set"}
+@app.get("/health/openai")
+async def health_openai():
+    if not os.getenv("OPENAI_API_KEY"):
+        return {"status": "error", "detail": "OPENAI_API_KEY not set"}
 
     try:
         response = await _get_client().chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Reply with the single word: OK"}],
             max_tokens=10,
         )
-        return {"status": "ok", "groq_reply": response.choices[0].message.content.strip()}
+        return {"status": "ok", "openai_reply": response.choices[0].message.content.strip()}
     except AuthenticationError:
-        return {"status": "error", "detail": "Invalid GROQ_API_KEY"}
+        return {"status": "error", "detail": "Invalid OPENAI_API_KEY"}
     except Exception as exc:
         return {"status": "error", "detail": str(exc)}

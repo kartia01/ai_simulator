@@ -93,6 +93,12 @@ public class SimulationController {
         return ResponseEntity.badRequest().body(new ErrorBody(ex.getMessage()));
     }
 
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<ErrorBody> handleIo(IOException ex) {
+        log.error("File read error: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(500).body(new ErrorBody("파일 읽기에 실패했습니다."));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorBody> handleRuntime(RuntimeException ex) {
         log.error("Simulation error: {}", ex.getMessage(), ex);

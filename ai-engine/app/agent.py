@@ -6,7 +6,8 @@ import logging
 import os
 import re
 
-from groq import AsyncGroq, RateLimitError, AuthenticationError
+# from groq import AsyncGroq, RateLimitError, AuthenticationError
+from openai import AsyncOpenAI, RateLimitError, AuthenticationError
 
 from .prompts import (
     SYSTEM_PROMPT_TEMPLATE,
@@ -32,8 +33,10 @@ from .vision import build_visual_ad_description
 
 logger = logging.getLogger(__name__)
 
-_API_KEY = os.getenv("GROQ_API_KEY")
-_MODEL = "llama-3.3-70b-versatile"
+# _API_KEY = os.getenv("GROQ_API_KEY")
+_API_KEY = os.getenv("OPENAI_API_KEY")
+# _MODEL = "llama-3.3-70b-versatile"
+_MODEL = "gpt-4o-mini"
 
 MAX_RETRIES = 3
 SCREENING_COUNT = 3
@@ -42,13 +45,16 @@ _TEMPERATURE = 0.60
 # 허용 문자: 한글, 숫자, 공백, 한국어 문장부호
 _KOREAN_ONLY = re.compile(r"[^가-힣ᄀ-ᇿ㄰-㆏0-9\s\.,!?~\-\"\'%/·…]")
 
-_client: AsyncGroq | None = None
+# _client: AsyncGroq | None = None
+_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncGroq:
+# def _get_client() -> AsyncGroq:
+def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncGroq(api_key=_API_KEY)
+        # _client = AsyncGroq(api_key=_API_KEY)
+        _client = AsyncOpenAI(api_key=_API_KEY)
     return _client
 
 
@@ -89,9 +95,10 @@ def _has_foreign_text(result: CognitiveLoopResult) -> bool:
     return any(_KOREAN_ONLY.search(t) for t in texts)
 
 
-# ── Groq 단일 호출 헬퍼 ────────────────────────────────────────────────────────
+# ── OpenAI 단일 호출 헬퍼 ──────────────────────────────────────────────────────
 
-async def _call_groq(system: str, user: str) -> str:
+# async def _call_groq(system: str, user: str) -> str:
+async def _call_openai(system: str, user: str) -> str:
     response = await _get_client().chat.completions.create(
         model=_MODEL,
         messages=[
@@ -124,19 +131,16 @@ async def _simulate_one(
         profile_block=build_profile_block(persona),
     )
 
-    # .format() 호출 시 사용자 입력/LLM 출력의 {} 가 format placeholder로 오해되는 것을 방지
-    safe_ad_content = ad_content.replace("{", "{{").replace("}", "}}")
-
     try:
         # Step 1 — 1.5초 본능 반응
-        step1_raw = await _call_groq(
+        step1_raw = await _call_openai(
             system,
-            STEP1_USER_PROMPT.format(ad_content=safe_ad_content),
+            STEP1_USER_PROMPT.format(ad_content=ad_content),
         )
         step1 = UnconsciousReaction(**json.loads(step1_raw))
 
         # Step 2 — Step 1 결과를 받아 자기중심 필터링
-        step2_raw = await _call_groq(
+        step2_raw = await _call_openai(
             system,
             STEP2_USER_PROMPT.format(
                 keywords=", ".join(step1.keywords),
@@ -148,14 +152,13 @@ async def _simulate_one(
         step2 = SelfishFiltering(**json.loads(step2_raw))
 
         # Step 3 — Step 1+2 결과를 받아 최종 결정
-        safe_reason = step2.reason.replace("{", "{{").replace("}", "}}")
-        step3_raw = await _call_groq(
+        step3_raw = await _call_openai(
             system,
             STEP3_USER_PROMPT.format(
                 keywords=", ".join(step1.keywords),
                 appeal_score=step1.appeal_score,
                 is_dropped_out=step2.is_dropped_out,
-                reason=safe_reason,
+                reason=step2.reason,
                 dropout_instruction=_STEP3_DROPPED if step2.is_dropped_out else _STEP3_STAYED,
             ),
         )
@@ -193,7 +196,7 @@ async def _simulate_one(
         return await _simulate_one(persona, ad_content, attempt + 1)
 
     except AuthenticationError:
-        logger.error("Persona %s — Groq auth error: check GROQ_API_KEY", persona.persona_id)
+        logger.error("Persona %s — OpenAI auth error: check OPENAI_API_KEY", persona.persona_id)
         return None
 
     except Exception as exc:
@@ -236,10 +239,7 @@ async def run_cascade_simulation(
     remainder = personas[SCREENING_COUNT:]
 
     logger.info("ad_id=%s | Stage-1 screening: %d personas", ad_id, len(screening))
-    stage1 = []
-    for p in screening:
-        result = await _simulate_one(p, ad_content)
-        stage1.append(result)
+    stage1 = list(await asyncio.gather(*[_simulate_one(p, ad_content) for p in screening]))
 
     stage2: list[CognitiveLoopResult | None] = []
     if remainder:
@@ -249,7 +249,7 @@ async def run_cascade_simulation(
     all_results = [r for r in (*stage1, *stage2) if r is not None]
 
     if not all_results:
-        raise RuntimeError("All persona simulations failed — check GROQ_API_KEY/quota")
+        raise RuntimeError("All persona simulations failed — check OPENAI_API_KEY/quota")
 
     logger.info(
         "ad_id=%s | Complete: %d/%d succeeded", ad_id, len(all_results), len(personas)

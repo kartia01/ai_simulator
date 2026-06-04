@@ -51,30 +51,29 @@ export default function SimulationDashboard() {
     setPreviewUrl(url);
   }, []);
 
-  const handleFileInput = (e) => {
+  const handleFileInput = useCallback((e) => {
     handleFile(e.target.files?.[0]);
     e.target.value = "";
-  };
+  }, [handleFile]);
 
-  const handleDrop = (e) => {
+  const handleDrop = useCallback((e) => {
     e.preventDefault();
     setDragOver(false);
     handleFile(e.dataTransfer.files?.[0]);
-  };
+  }, [handleFile]);
 
-  const removeMedia = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setMediaFile(null);
-    setPreviewUrl(null);
-    setFileError(null);
-  };
-
-  // previewUrl이 교체되거나 컴포넌트가 언마운트될 때 메모리 누수 방지
+  // previewUrl 교체 또는 컴포넌트 언마운트 시 메모리 해제
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  const removeMedia = useCallback(() => {
+    setMediaFile(null);
+    setPreviewUrl(null);
+    setFileError(null);
+  }, []);
 
   const isVideo = useMemo(
     () => mediaFile != null && ACCEPTED_VIDEO.includes(mediaFile.type),
@@ -332,16 +331,17 @@ function SectionLabel({ children }) {
 }
 
 function KeywordFrequency({ results }) {
-  const freq = {};
-  for (const r of results) {
-    for (const kw of r.step1UnconsciousReaction.keywords) {
-      freq[kw.toLowerCase()] = (freq[kw.toLowerCase()] ?? 0) + 1;
+  const sorted = useMemo(() => {
+    const freq = {};
+    for (const r of results) {
+      for (const kw of r.step1UnconsciousReaction.keywords) {
+        freq[kw.toLowerCase()] = (freq[kw.toLowerCase()] ?? 0) + 1;
+      }
     }
-  }
-
-  const sorted = Object.entries(freq)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 12);
+    return Object.entries(freq)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 12);
+  }, [results]);
 
   const max = sorted[0]?.[1] ?? 1;
 
