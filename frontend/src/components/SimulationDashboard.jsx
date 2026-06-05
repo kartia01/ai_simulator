@@ -334,7 +334,7 @@ function KeywordFrequency({ results }) {
   const sorted = useMemo(() => {
     const freq = {};
     for (const r of results) {
-      for (const kw of r.step1UnconsciousReaction.keywords) {
+      for (const kw of (r.emotions ?? [])) {
         freq[kw.toLowerCase()] = (freq[kw.toLowerCase()] ?? 0) + 1;
       }
     }

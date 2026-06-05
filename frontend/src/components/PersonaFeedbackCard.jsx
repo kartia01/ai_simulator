@@ -33,9 +33,11 @@ function ScoreDots({ score }) {
 }
 
 export default function PersonaFeedbackCard({ result, persona }) {
-  const { step1UnconsciousReaction, step2SelfishFiltering, step3FinalAction } = result;
-  const dropped = step2SelfishFiltering.isDroppedOut;
-  const clicked = step3FinalAction.clicked;
+  const emotions = result.emotions ?? [];
+  // attention(0-1) → appeal_score(1-5)
+  const appealScore = Math.round(result.attention * 4 + 1);
+  const dropped = !result.clickIntent && result.sentiment < 0;
+  const clicked = result.clickIntent;
   const badge = getBadge(clicked, dropped);
 
   return (
@@ -61,11 +63,11 @@ export default function PersonaFeedbackCard({ result, persona }) {
       {/* ── Steps ── */}
       <div className="p-4 space-y-4">
 
-        {/* Step 1 — 무의식적 반응 */}
+        {/* Step 1 — 연상 단어 */}
         <div>
-          <StepLabel step="1단계" title="무의식적 반응" color="text-indigo-400" />
+          <StepLabel step="1단계" title="연상 단어" color="text-indigo-400" />
           <div className="flex flex-wrap gap-2 mb-2">
-            {step1UnconsciousReaction.keywords.map((kw, i) => (
+            {emotions.map((kw, i) => (
               <span
                 key={`${kw}-${i}`}
                 className="bg-indigo-950 border border-indigo-800 text-indigo-300 text-xs px-2.5 py-1 rounded-full font-medium"
@@ -74,25 +76,25 @@ export default function PersonaFeedbackCard({ result, persona }) {
               </span>
             ))}
           </div>
-          <ScoreDots score={step1UnconsciousReaction.appealScore} />
+          <ScoreDots score={appealScore} />
         </div>
 
-        {/* Step 2 — 자기중심적 필터링 */}
+        {/* Step 2 — 속마음 */}
         <div>
-          <StepLabel step="2단계" title="자기중심적 필터링" color="text-amber-400" />
+          <StepLabel step="2단계" title="페르소나의 속마음" color="text-amber-400" />
           <blockquote
             className={`text-sm italic border-l-2 pl-3 ${
               dropped ? "border-rose-600 text-rose-300" : "border-emerald-600 text-emerald-300"
             }`}
           >
-            "{step2SelfishFiltering.reason}"
+            "{result.reasoning ?? ""}"
           </blockquote>
         </div>
 
-        {/* Step 3 — 최종 행동 */}
+        {/* Step 3 — 느낀점 */}
         <div>
-          <StepLabel step="3단계" title="최종 행동" color="text-emerald-400" />
-          <p className="text-sm text-gray-300">{step3FinalAction.actionReason}</p>
+          <StepLabel step="3단계" title="느낀점" color="text-emerald-400" />
+          <p className="text-sm text-gray-300">{result.impression ?? ""}</p>
         </div>
 
         {persona?.context && (

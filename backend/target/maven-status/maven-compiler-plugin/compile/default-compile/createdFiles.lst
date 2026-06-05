@@ -18,4 +18,5 @@ com\adsimulator\client\FastApiClient.class
 com\adsimulator\controller\SimulationController.class
 com\adsimulator\dto\response\UnconsciousReactionDto.class
 com\adsimulator\config\WebClientConfig.class
+com\adsimulator\dto\response\PersonaReactionSignalDto.class
 com\adsimulator\dto\response\AdMetricsDto.class

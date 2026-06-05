@@ -11,7 +11,7 @@ export default function CognitiveTimeline({ metrics, totalPersonas }) {
     },
     {
       step: "2단계",
-      label: "자기중심적 필터링",
+      label: "페르소나의 속마음",
       sub: "이탈하지 않음",
       pct: metrics.vtr,
       count: Math.round((metrics.vtr / 100) * totalPersonas),

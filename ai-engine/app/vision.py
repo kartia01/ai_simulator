@@ -5,25 +5,19 @@ import logging
 import os
 import tempfile
 
-# from groq import AsyncGroq
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-# _VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 _VISION_MODEL = "gpt-4o-mini"
-# _API_KEY = os.getenv("GROQ_API_KEY")
 _API_KEY = os.getenv("OPENAI_API_KEY")
 
-# _client: AsyncGroq | None = None
 _client: AsyncOpenAI | None = None
 
 
-# def _get_client() -> AsyncGroq:
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        # _client = AsyncGroq(api_key=_API_KEY)
         _client = AsyncOpenAI(api_key=_API_KEY)
     return _client
 
@@ -35,7 +29,7 @@ async def build_visual_ad_description(
     media_content_type: str | None = None,
 ) -> str:
     """
-    이미지 또는 영상을 Groq 비전 모델로 분석해 광고 설명 텍스트를 반환한다.
+    이미지 또는 영상을 OpenAI 비전 모델로 분석해 광고 설명 텍스트를 반환한다.
     미디어가 없으면 원본 ad_content를 그대로 반환한다.
     """
     if image_base64:

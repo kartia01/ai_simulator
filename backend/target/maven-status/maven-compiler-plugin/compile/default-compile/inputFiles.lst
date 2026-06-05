@@ -8,6 +8,7 @@ C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\re
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\AdMetricsDto.java
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\CognitiveLoopResultDto.java
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\FinalActionDto.java
+C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\PersonaReactionSignalDto.java
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\SelfishFilteringDto.java
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\SimulationResultDto.java
 C:\Users\804\Documents\ad_simulator\backend\src\main\java\com\adsimulator\dto\response\UnconsciousReactionDto.java

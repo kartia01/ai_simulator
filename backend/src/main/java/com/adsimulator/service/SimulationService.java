@@ -4,7 +4,7 @@ import com.adsimulator.client.FastApiClient;
 import com.adsimulator.dto.fastapi.PersonaPayload;
 import com.adsimulator.dto.fastapi.SimulationPayload;
 import com.adsimulator.dto.request.AdSimulationRequest;
-import com.adsimulator.dto.response.CognitiveLoopResultDto;
+import com.adsimulator.dto.response.PersonaReactionSignalDto;
 import com.adsimulator.dto.response.SimulationResultDto;
 import com.adsimulator.entity.Persona;
 import com.adsimulator.entity.PersonaResult;
@@ -82,12 +82,22 @@ public class SimulationService {
 
         SimulationResultDto raw = fastApiClient.simulate(payload).block();
 
-        List<CognitiveLoopResultDto> enriched = raw.results().stream()
-                .map(r -> new CognitiveLoopResultDto(
+        List<PersonaReactionSignalDto> enriched = raw.results().stream()
+                .map(r -> new PersonaReactionSignalDto(
                         idToName.getOrDefault(r.personaId(), r.personaId()),
-                        r.step1UnconsciousReaction(),
-                        r.step2SelfishFiltering(),
-                        r.step3FinalAction()
+                        r.segment(),
+                        r.attention(),
+                        r.sentiment(),
+                        r.clickIntent(),
+                        r.conversionIntent(),
+                        r.comprehension(),
+                        r.reasoning(),
+                        r.recall(),
+                        r.emotions(),
+                        r.confidence(),
+                        r.creativeId(),
+                        r.objective(),
+                        r.impression()
                 ))
                 .toList();
 
@@ -114,12 +124,13 @@ public class SimulationService {
                     PersonaResult pr = new PersonaResult();
                     pr.setRun(run);
                     pr.setPersonaName(r.personaId());
-                    pr.setAppealScore(r.step1UnconsciousReaction().appealScore());
-                    pr.setKeywords(String.join(",", r.step1UnconsciousReaction().keywords()));
-                    pr.setDroppedOut(r.step2SelfishFiltering().isDroppedOut());
-                    pr.setSelfishReason(r.step2SelfishFiltering().reason());
-                    pr.setClicked(r.step3FinalAction().clicked());
-                    pr.setActionReason(r.step3FinalAction().actionReason());
+                    // attention(0-1) → appeal_score(1-5): reverse of agent.py formula (score-1)/4
+                    pr.setAppealScore((int) Math.round(r.attention() * 4 + 1));
+                    pr.setKeywords(r.emotions() != null ? String.join(",", r.emotions()) : "");
+                    pr.setDroppedOut(!r.clickIntent() && r.sentiment() < 0);
+                    pr.setSelfishReason(r.reasoning() != null ? r.reasoning() : "");
+                    pr.setClicked(r.clickIntent());
+                    pr.setActionReason(r.impression() != null ? r.impression() : "");
                     return pr;
                 })
                 .toList();

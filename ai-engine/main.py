@@ -9,7 +9,6 @@ load_dotenv(override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-# from groq import AuthenticationError
 from openai import AuthenticationError
 
 from app.agent import run_cascade_simulation, _get_client
@@ -61,6 +60,8 @@ async def simulate(request: SimulationRequest):
             ad_content=request.ad_content,
             ad_id=request.ad_id,
             ad_type=request.ad_type,
+            objective=request.objective,
+            product_price=request.product_price,
             image_base64=request.image_base64,
             video_base64=request.video_base64,
             media_content_type=request.media_content_type,

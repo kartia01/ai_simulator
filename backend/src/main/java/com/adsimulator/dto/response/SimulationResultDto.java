@@ -19,7 +19,7 @@ public record SimulationResultDto(
         @JsonAlias("total_personas")
         int totalPersonas,
 
-        List<CognitiveLoopResultDto> results,
+        List<PersonaReactionSignalDto> results,
 
         AdMetricsDto metrics
 ) {}
