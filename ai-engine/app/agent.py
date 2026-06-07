@@ -10,12 +10,15 @@ import statistics
 from openai import AsyncOpenAI, RateLimitError, AuthenticationError
 from pydantic import ValidationError
 
+from .db import get_pool
+from .memory import save_memory, retrieve_memories
 from .prompts import (
     SYSTEM_PROMPT_TEMPLATE,
     build_combined_prompt,
     build_profile_block,
     build_platform_behavior,
     build_filter_type,
+    build_memory_block,
 )
 from .schemas import (
     AdMetrics,
@@ -140,7 +143,22 @@ def _has_foreign_text(result: CognitiveLoopResult) -> bool:
         result.step3_final_action.action_reason,
         result.step3_final_action.impression,
     ]
+    if result.step3_final_action.reasoning_chain:
+        texts.append(result.step3_final_action.reasoning_chain)
     return any(_KOREAN_ONLY.search(t) for t in texts)
+
+
+# ── 세그먼트 자동 계산 ────────────────────────────────────────────────────────
+
+def _compute_segment(persona: PersonaInput) -> str:
+    decade = f"{(persona.age // 10) * 10}s"
+    if persona.gender:
+        g = persona.gender.lower()
+        if "여" in g or "female" in g:
+            return f"{decade}_female"
+        if "남" in g or "male" in g:
+            return f"{decade}_male"
+    return decade
 
 
 # ── CognitiveLoopResult → PersonaReactionSignal 변환 ─────────────────────────
@@ -165,7 +183,7 @@ def _to_signal(
         persona_name=persona.name,
         persona_age=persona.age,
         persona_job=persona.job,
-        segment=persona.segment or "unknown",
+        segment=_compute_segment(persona),
         attention=attention,
         sentiment=step2.sentiment,
         click_intent=step3.clicked,
@@ -176,6 +194,7 @@ def _to_signal(
         emotions=step1.emotions,
         confidence=step3.confidence,
         impression=step3.impression,
+        reasoning_chain=step3.reasoning_chain,
     )
 
 
@@ -219,13 +238,37 @@ async def _call_openai(system: str, user: str, temperature: float = _BASE_TEMPER
                 {"role": "user", "content": user},
             ],
             temperature=temperature,
-            max_tokens=500,
+            max_tokens=600,
             response_format={"type": "json_object"},
         )
     return response.choices[0].message.content
 
 
-# ── 단일 페르소나 시뮬레이션 (3단계 체인) ─────────────────────────────────────
+# ── 메모리 이벤트 내용 생성 ───────────────────────────────────────────────────
+
+def _build_event_content(signal: PersonaReactionSignal, ad_content: str) -> tuple[str, str]:
+    ad_hint = ad_content[:80].replace("\n", " ")
+
+    parts = [f"광고 노출: {ad_hint}"]
+    if signal.emotions:
+        parts.append(f"즉각 감정: {', '.join(signal.emotions)}")
+    if signal.impression:
+        parts.append(f"인상: {signal.impression}")
+
+    if signal.conversion_intent:
+        parts.append("행동: 클릭 후 구매 의향 있음")
+        tag = "PURCHASE"
+    elif signal.click_intent:
+        parts.append("행동: 클릭함 (구매 의향 없음)")
+        tag = "EVENT"
+    else:
+        parts.append("행동: 스크롤로 넘김")
+        tag = "EVENT"
+
+    return " | ".join(parts), tag
+
+
+# ── 단일 페르소나 시뮬레이션 (3단계 체인 + Step 2.5) ─────────────────────────
 
 async def _simulate_one(
     persona: PersonaInput,
@@ -234,12 +277,15 @@ async def _simulate_one(
     product_price: int | None,
     ad_id: str = "",
     attempt: int = 0,
+    memories: list[dict] | None = None,
 ) -> PersonaReactionSignal | None:
     temperature = _assign_temperature(persona)
+    memory_block = build_memory_block(memories or [])
 
     system = SYSTEM_PROMPT_TEMPLATE.format(
         name=persona.name,
         age=persona.age,
+        gender=persona.gender or "미지정",
         job=persona.job,
         emotional_state=persona.emotional_state or "보통",
         platform=persona.platform or "스마트폰",
@@ -248,6 +294,7 @@ async def _simulate_one(
         drop_off_trigger=persona.drop_off_trigger,
         filter_type=build_filter_type(persona.mbti),
         profile_block=build_profile_block(persona),
+        memory_block=memory_block,
     )
     prompt = build_combined_prompt(
         ad_content=ad_content,
@@ -280,6 +327,7 @@ async def _simulate_one(
             action_reason=data["action_reason"],
             impression=data["impression"],
             confidence=data["confidence"],
+            reasoning_chain=data.get("reasoning_chain"),
         )
 
         internal = _fix_logic_errors(
@@ -299,7 +347,7 @@ async def _simulate_one(
                     persona.persona_id, attempt + 1,
                 )
                 await asyncio.sleep(1)
-                return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
+                return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1, memories)
             logger.error("Persona %s — 재시도 후에도 비한국어 응답", persona.persona_id)
 
         return _to_signal(internal, persona, ad_id, objective)
@@ -311,7 +359,7 @@ async def _simulate_one(
                 persona.persona_id, attempt + 1, exc,
             )
             await asyncio.sleep(1)
-            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
+            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1, memories)
         logger.error("Persona %s — JSON 파싱/검증 영구 실패: %s", persona.persona_id, exc)
         return None
 
@@ -322,7 +370,7 @@ async def _simulate_one(
         wait = 2 ** attempt * 5
         logger.warning("Persona %s — rate limit, %ds 대기 (attempt %d)", persona.persona_id, wait, attempt + 1)
         await asyncio.sleep(wait)
-        return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
+        return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1, memories)
 
     except AuthenticationError:
         logger.error("Persona %s — OpenAI 인증 오류: OPENAI_API_KEY 확인", persona.persona_id)
@@ -333,7 +381,7 @@ async def _simulate_one(
             wait = 2 ** attempt
             logger.warning("Retrying persona %s (attempt %d): %s", persona.persona_id, attempt + 1, exc)
             await asyncio.sleep(wait)
-            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
+            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1, memories)
         logger.error("Persona %s failed permanently: %s", persona.persona_id, exc, exc_info=True)
         return None
 
@@ -363,15 +411,34 @@ async def run_cascade_simulation(
         )
         logger.info("ad_id=%s | 비전 분석 완료 (%d chars)", ad_id, len(ad_content))
 
+    # 페르소나별 관련 메모리 병렬 조회
+    pool = get_pool()
+    memory_results = await asyncio.gather(
+        *[retrieve_memories(pool, p.persona_id, ad_content) for p in personas],
+        return_exceptions=True,
+    )
+    memories_per_persona: list[list[dict]] = [
+        m if isinstance(m, list) else [] for m in memory_results
+    ]
+
     logger.info("ad_id=%s | 전체 %d 페르소나 병렬 실행", ad_id, len(personas))
     gather_results = await asyncio.gather(
-        *[_simulate_one(p, ad_content, objective, product_price, ad_id) for p in personas],
+        *[
+            _simulate_one(p, ad_content, objective, product_price, ad_id, memories=mem)
+            for p, mem in zip(personas, memories_per_persona)
+        ],
         return_exceptions=True,
     )
     raw_signals = [s for s in gather_results if isinstance(s, PersonaReactionSignal)]
 
     if not raw_signals:
         raise RuntimeError("All persona simulations failed — check OPENAI_API_KEY/quota")
+
+    # 시뮬레이션 결과를 메모리에 비동기 저장 (실패해도 시뮬레이션 결과에 영향 없음)
+    if pool:
+        asyncio.ensure_future(
+            _save_simulation_memories(pool, raw_signals, personas, ad_content)
+        )
 
     # IQR 이상치 감지 및 제거 (여태호 요구사항 §11.1 전략 5)
     clean_signals, outlier_count = _filter_outliers(raw_signals)
@@ -392,6 +459,23 @@ async def run_cascade_simulation(
         results=clean_signals,
         metrics=_calc_metrics(clean_signals, outlier_count),
     )
+
+
+async def _save_simulation_memories(
+    pool,
+    signals: list[PersonaReactionSignal],
+    personas: list[PersonaInput],
+    ad_content: str,
+) -> None:
+    persona_map = {p.persona_id: p for p in personas}
+    tasks = []
+    for signal in signals:
+        content, tag = _build_event_content(signal, ad_content)
+        tasks.append(save_memory(pool, signal.persona_id, tag, content))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    errors = [r for r in results if isinstance(r, Exception)]
+    if errors:
+        logger.warning("메모리 저장 실패 %d건: %s", len(errors), errors[0])
 
 
 # ── 집계 지표 ─────────────────────────────────────────────────────────────────

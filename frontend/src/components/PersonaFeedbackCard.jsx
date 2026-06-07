@@ -1,7 +1,7 @@
 const ACTION_BADGE = {
-  clicked: { className: "bg-emerald-900 text-emerald-300", label: "✓ 클릭" },
-  dropped: { className: "bg-rose-900 text-rose-300",    label: "✗ 이탈" },
-  ignored: { className: "bg-gray-700 text-gray-300",    label: "– 무시" },
+  clicked: { className: "bg-emerald-100 text-emerald-700 border border-emerald-200", label: "✓ 클릭" },
+  dropped: { className: "bg-red-100 text-red-600 border border-red-200",             label: "✗ 이탈" },
+  ignored: { className: "bg-sky-50 text-brand-muted border border-sky-400/20",       label: "– 무시" },
 };
 
 function getBadge(clicked, dropped) {
@@ -24,32 +24,31 @@ function ScoreDots({ score }) {
       {[1, 2, 3, 4, 5].map((n) => (
         <div
           key={n}
-          className={`w-3 h-3 rounded-full ${n <= score ? "bg-indigo-400" : "bg-gray-700"}`}
+          className={`w-3 h-3 rounded-full ${n <= score ? "bg-sky-400" : "bg-sky-100"}`}
         />
       ))}
-      <span className="text-xs text-gray-500 ml-1">{score}/5</span>
+      <span className="text-xs text-brand-light ml-1">{score}/5</span>
     </div>
   );
 }
 
 export default function PersonaFeedbackCard({ result, persona }) {
   const emotions = result.emotions ?? [];
-  // attention(0-1) → appeal_score(1-5)
   const appealScore = Math.round(result.attention * 4 + 1);
   const dropped = !result.clickIntent && result.sentiment < 0;
   const clicked = result.clickIntent;
   const badge = getBadge(clicked, dropped);
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+    <div className="bg-white border border-sky-400/20 rounded-xl overflow-hidden shadow-card">
 
       {/* ── Header ── */}
-      <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
+      <div className="px-4 py-3 bg-sky-50 border-b border-sky-400/15 flex items-center justify-between">
         <div>
-          <span className="font-bold text-gray-100 text-sm">
+          <span className="font-bold text-brand-text text-sm">
             {persona?.name ?? result.personaName ?? result.personaId}
           </span>
-          <span className="text-xs text-gray-500 ml-2">
+          <span className="text-xs text-brand-muted ml-2">
             {(persona?.age ?? result.personaAge)}세 · {(persona?.job ?? result.personaJob)}
           </span>
         </div>
@@ -63,12 +62,12 @@ export default function PersonaFeedbackCard({ result, persona }) {
 
         {/* Step 1 — 연상 단어 */}
         <div>
-          <StepLabel step="1단계" title="연상 단어" color="text-indigo-400" />
+          <StepLabel step="1단계" title="연상 단어" color="text-sky-500" />
           <div className="flex flex-wrap gap-2 mb-2">
             {emotions.map((kw, i) => (
               <span
                 key={`${kw}-${i}`}
-                className="bg-indigo-950 border border-indigo-800 text-indigo-300 text-xs px-2.5 py-1 rounded-full font-medium"
+                className="bg-sky-50 border border-sky-400/25 text-sky-600 text-xs px-2.5 py-1 rounded-full font-medium"
               >
                 {kw}
               </span>
@@ -79,10 +78,12 @@ export default function PersonaFeedbackCard({ result, persona }) {
 
         {/* Step 2 — 속마음 */}
         <div>
-          <StepLabel step="2단계" title="페르소나의 속마음" color="text-amber-400" />
+          <StepLabel step="2단계" title="페르소나의 속마음" color="text-amber-600" />
           <blockquote
             className={`text-sm italic border-l-2 pl-3 ${
-              dropped ? "border-rose-600 text-rose-300" : "border-emerald-600 text-emerald-300"
+              dropped
+                ? "border-red-300 text-red-600"
+                : "border-emerald-300 text-emerald-700"
             }`}
           >
             "{result.reasoning ?? ""}"
@@ -91,12 +92,12 @@ export default function PersonaFeedbackCard({ result, persona }) {
 
         {/* Step 3 — 느낀점 */}
         <div>
-          <StepLabel step="3단계" title="느낀점" color="text-emerald-400" />
-          <p className="text-sm text-gray-300">{result.impression ?? ""}</p>
+          <StepLabel step="3단계" title="느낀점" color="text-emerald-600" />
+          <p className="text-sm text-brand-text">{result.impression ?? ""}</p>
         </div>
 
         {persona?.context && (
-          <p className="text-xs text-gray-600 border-t border-gray-800 pt-3">
+          <p className="text-xs text-brand-light border-t border-sky-400/10 pt-3">
             상황: {persona.context}
           </p>
         )}

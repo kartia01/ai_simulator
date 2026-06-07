@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("OPENAI_API_KEY is not set — simulations will fail")
     await db.init_db()
+    await db.init_memory_table()
     logger.info("Ad Simulator AI Engine — startup")
     yield
     await db.close_db()

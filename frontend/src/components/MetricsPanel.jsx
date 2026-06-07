@@ -35,19 +35,19 @@ export default function MetricsPanel({ metrics }) {
       {cards.map((c) => (
         <div
           key={c.label}
-          className="bg-gray-900 border border-gray-700 rounded-xl p-5 flex flex-col gap-1"
+          className="bg-white border border-sky-400/20 rounded-xl p-5 flex flex-col gap-1 shadow-card"
         >
-          <span className="text-xs font-semibold tracking-widest text-gray-500 uppercase">
+          <span className="text-xs font-bold tracking-widest text-brand-muted uppercase">
             {c.sublabel}
           </span>
           <span
-            className={`text-3xl font-black tabular-nums ${
-              c.good ? "text-emerald-400" : "text-rose-400"
+            className={`text-3xl font-black tabular-nums font-display ${
+              c.good ? "text-emerald-600" : "text-red-500"
             }`}
           >
             {c.value}
           </span>
-          <span className="text-xs text-gray-600 mt-1">{c.tip}</span>
+          <span className="text-xs text-brand-light mt-1">{c.tip}</span>
         </div>
       ))}
     </div>

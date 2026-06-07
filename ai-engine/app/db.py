@@ -32,12 +32,47 @@ async def init_db() -> None:
     logger.info("DB pool initialized (host=%s port=%s)", host, os.getenv("DB_PORT"))
 
 
+def get_pool() -> asyncpg.Pool | None:
+    return _pool
+
+
 async def close_db() -> None:
     global _pool
     if _pool:
         await _pool.close()
         _pool = None
         logger.info("DB pool closed")
+
+
+async def init_memory_table() -> None:
+    if not _pool:
+        return
+    async with _pool.acquire() as conn:
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS persona_memories (
+                id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                persona_id  TEXT NOT NULL,
+                tag         TEXT NOT NULL CHECK (tag IN ('EVENT', 'PURCHASE', 'REFLECTION', 'CONVERSATION')),
+                content     TEXT NOT NULL,
+                embedding   vector(1536),
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_persona_memories_persona
+            ON persona_memories (persona_id)
+        """)
+        # ivfflat 인덱스는 데이터가 있어야 생성 가능하므로 실패해도 무시
+        try:
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_persona_memories_embedding
+                ON persona_memories USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 50)
+            """)
+        except Exception as e:
+            logger.warning("ivfflat 인덱스 생성 스킵 (데이터 없음 또는 미지원): %s", e)
+    logger.info("persona_memories table ready")
 
 
 async def get_all_personas() -> list[PersonaInput]:
@@ -74,34 +109,20 @@ async def _fetch_personas(sql: str, args: list) -> list[PersonaInput]:
 
 
 def _row_to_persona(row: asyncpg.Record, interests: list[str]) -> PersonaInput:
-    def _arr(key: str) -> list[str] | None:
-        val = row.get(key)
-        if val is None:
-            return None
-        return list(val)
-
     return PersonaInput(
         persona_id=str(row["id"]),
         name=row["name"],
         age=row["age"],
         job=row["job"],
-        platform=row.get("platform"),
         context=row["context"],
         drop_off_trigger=row["drop_off_trigger"],
-        mbti=row.get("mbti"),
+        gender=row.get("gender"),
         interests=interests or None,
-        income_level=row.get("income_level"),
         purchase_pattern=row.get("purchase_pattern"),
-        brand_sensitivity=row.get("brand_sensitivity"),
-        typical_ad_behavior=row.get("typical_ad_behavior"),
-        value_keywords=row.get("value_keywords"),
-        emotional_state=row.get("emotional_state"),
         deal_prone_score=row.get("deal_prone_score"),
-        # IO Spec 추가 필드 — 이전에 누락되어 항상 None이었음
-        segment=row.get("segment"),
         price_threshold=row.get("price_threshold"),
         brand_loyalty=row.get("brand_loyalty"),
-        pain_points=_arr("pain_points"),
-        interest_keywords=_arr("interest_keywords"),
-        ad_repellent_words=_arr("ad_repellent_words"),
+        platform=row.get("platform"),
+        mbti=row.get("mbti"),
+        emotional_state=row.get("emotional_state"),
     )

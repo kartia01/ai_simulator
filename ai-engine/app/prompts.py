@@ -58,6 +58,7 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
 ══════════════════════════════════════════════════════════════
   Name            : {name}
   Age             : {age}
+  Gender          : {gender}
   Occupation      : {job}
   Emotional state : {emotional_state}
   Platform        : {platform}
@@ -65,7 +66,7 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
   Right now       : {context}
   Scroll away if  : {drop_off_trigger}
   Personal lens   : {filter_type}
-{profile_block}
+{profile_block}{memory_block}
 ══════════════════════════════════════════════════════════════
   RULES
 ══════════════════════════════════════════════════════════════
@@ -78,6 +79,7 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
   ✅ REQUIRED: Your reaction may be positive, negative, or neutral — whatever fits your profile
   ✅ REQUIRED: Filter through YOUR personality lens: {filter_type}
   ✅ REQUIRED: Emotional state [{emotional_state}] colors every reaction
+  ✅ REQUIRED: 과거 기억이 있다면 그것이 현재 반응에 자연스럽게 영향을 준다
   ✅ REQUIRED: 모든 문자열 값을 한국어로만 작성할 것
 
 ══════════════════════════════════════════════════════════════
@@ -106,7 +108,7 @@ Step 3 — 최종 판단 (전환 캠페인){price_line}
 """
 
 COMBINED_USER_PROMPT = """\
-[언어 규칙] emotions, reason, action_reason, impression — 모든 문자열은 반드시 한국어로만 작성하라.
+[언어 규칙] emotions, reason, reasoning_chain, action_reason, impression — 모든 문자열은 반드시 한국어로만 작성하라.
 
 광고가 화면에 떴다.
 
@@ -130,6 +132,14 @@ COMBINED_USER_PROMPT = """\
   comprehension: 0.0 전혀 이해 못함 / 0.5 부분 이해 / 1.0 정확히 이해
   recall: 0.0 기억 못함 / 0.5 브랜드만 기억 / 1.0 브랜드+메시지 기억
 
+[Step 2.5 — 내부 트리거 체인 점검, 0.5초]
+  내 내부 상태(욕구·예산·브랜드)를 빠르게 돌아보고 Step 3 판단의 근거를 만들어라.
+  ① 욕구/필요성: 지금 이 카테고리·제품이 나에게 필요한가?
+  ② 예산 확인: 이 가격이 내 지갑 사정에 맞는가?
+  ③ 브랜드 신뢰: 이 브랜드를 믿을 수 있는가?
+  → 이 3가지 판단을 한 문장 내부 독백으로 reasoning_chain에 적어라.
+  (예: "운동화가 필요하긴 한데... 8만원이면 좀 비싸고, 이 브랜드는 잘 모르겠다")
+
 [{step3_instruction}]
   confidence: 0.0 전혀 확신 없음 / 0.5 어느 정도 / 1.0 완전히 확신
 
@@ -149,6 +159,7 @@ Output ONLY:
   "sentiment": <float -1.0~1.0>,
   "comprehension": <float 0.0~1.0>,
   "recall": <float 0.0~1.0>,
+  "reasoning_chain": "<욕구→예산→브랜드 판단 내부 독백 1문장>",
   "clicked": <true|false>,
   "conversion_intent": <true|false>,
   "action_reason": "<엄지를 움직인 단 하나의 생각>",
@@ -195,51 +206,74 @@ def build_combined_prompt(
     )
 
 
-# ── 프로필 블록 ────────────────────────────────────────────────────────────────
+# ── 내부 트리거 트리아드 블록 (구 build_profile_block) ─────────────────────────
 
 def build_profile_block(persona) -> str:
     lines: list[str] = []
 
-    if persona.income_level:
-        lines.append(f"  Income level : {persona.income_level}")
-    if persona.purchase_pattern:
-        lines.append(f"  Buying habit : {persona.purchase_pattern}")
-    if persona.brand_sensitivity:
-        lines.append(f"  Brand stance : {persona.brand_sensitivity}")
-    if persona.typical_ad_behavior:
-        lines.append(f"  Ad behavior  : {persona.typical_ad_behavior}")
-    if persona.value_keywords:
-        lines.append(f"  Eye-catchers : {persona.value_keywords}")
-    if persona.mbti:
-        lines.append(f"  MBTI         : {persona.mbti}")
+    # 욕구/필요성: 관심사 + 구매 패턴
+    need_parts: list[str] = []
     if persona.interests:
-        lines.append(f"  Interests    : {', '.join(persona.interests)}")
-    if persona.pain_points:
-        lines.append(f"  Pain points  : {', '.join(persona.pain_points)}")
-    if persona.interest_keywords:
-        lines.append(f"  Int.Keywords : {', '.join(persona.interest_keywords)}")
-    if persona.price_threshold is not None:
-        lines.append(f"  Max budget   : {persona.price_threshold:,}원")
-    if persona.brand_loyalty is not None:
-        lines.append(f"  Brand loyalty: {persona.brand_loyalty:.2f} (0=무관심, 1=충성)")
+        need_parts.append(f"관심사 {', '.join(persona.interests)}")
+    if persona.purchase_pattern:
+        need_parts.append(persona.purchase_pattern)
+    if need_parts:
+        lines.append(f"  욕구/필요성 : {' | '.join(need_parts)}")
+
+    # 가격민감도: deal_prone_score + price_threshold
+    price_parts: list[str] = []
     if persona.deal_prone_score is not None:
         dpp = persona.deal_prone_score
         if dpp >= 0.7:
-            dpp_label = "높음 — 할인·혜택 광고에 즉각 반응, 가격 혜택이 결정적"
+            price_parts.append(f"높음({dpp:.2f}) — 할인·프로모션이 결정적 변수")
         elif dpp <= 0.3:
-            dpp_label = "낮음 — 가격보다 품질·가치 중시, 할인에 큰 흔들림 없음"
+            price_parts.append(f"낮음({dpp:.2f}) — 품질·가치 중시, 가격은 부차적")
         else:
-            dpp_label = "보통 — 할인은 참고하지만 결정적이진 않음"
-        lines.append(f"  Deal proneness: {dpp:.2f} — {dpp_label}")
-    if persona.ad_repellent_words:
-        lines.append(f"  Hates these  : {', '.join(persona.ad_repellent_words)}")
+            price_parts.append(f"보통({dpp:.2f})")
+    if persona.price_threshold is not None:
+        price_parts.append(f"최대 예산 {persona.price_threshold:,}원")
+    if price_parts:
+        lines.append(f"  가격민감도 : {' | '.join(price_parts)}")
+
+    # 브랜드인식: brand_loyalty
+    if persona.brand_loyalty is not None:
+        bl = persona.brand_loyalty
+        if bl >= 0.7:
+            bl_label = f"강함({bl:.2f}) — 브랜드 이름만으로 신뢰"
+        elif bl <= 0.3:
+            bl_label = f"약함({bl:.2f}) — 브랜드 이름만으로는 신뢰 없음"
+        else:
+            bl_label = f"보통({bl:.2f})"
+        lines.append(f"  브랜드인식 : {bl_label}")
+
+    if persona.mbti:
+        lines.append(f"  성격 유형  : {persona.mbti}")
 
     if not lines:
         return ""
 
     header = (
         "══════════════════════════════════════════════════════════════\n"
-        "  BEHAVIORAL PROFILE\n"
+        "  INTERNAL TRIGGER TRIAD — 구매 결정을 좌우하는 3가지 내부 상태\n"
+        "══════════════════════════════════════════════════════════════\n"
+    )
+    footer = "  → Step 2.5에서 이 트리아드를 기반으로 판단하라.\n"
+    return header + "\n".join(lines) + "\n" + footer
+
+
+# ── 메모리 블록 포맷 ───────────────────────────────────────────────────────────
+
+def build_memory_block(memories: list[dict]) -> str:
+    if not memories:
+        return ""
+
+    lines: list[str] = []
+    for m in memories:
+        lines.append(f"  [{m['tag']}] {m['content']}")
+
+    header = (
+        "══════════════════════════════════════════════════════════════\n"
+        "  PAST MEMORY — 관련 과거 기억 (현재 반응에 자연스럽게 반영)\n"
         "══════════════════════════════════════════════════════════════\n"
     )
     return header + "\n".join(lines) + "\n"

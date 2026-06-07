@@ -1,3 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-text;
+    font-family: 'Noto Sans KR', 'Nunito', sans-serif;
+  }
+}
+
+@layer utilities {
+  .animation-delay-7 {
+    animation-delay: -7s;
+  }
+}

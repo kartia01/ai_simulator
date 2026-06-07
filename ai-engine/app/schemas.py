@@ -50,6 +50,7 @@ class FinalAction(BaseModel):
     action_reason: str = Field(min_length=5, description="The single thought that moved your thumb")
     impression: str = Field(min_length=5, description="이 광고에 대한 솔직한 한 줄 느낌")
     confidence: float = Field(ge=0.0, le=1.0, description="반응 확신도 0.0~1.0")
+    reasoning_chain: str | None = Field(default=None, description="욕구→예산→브랜드 판단 내부 독백 요약")
 
 
 # ── Internal aggregate ────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ class PersonaReactionSignal(BaseModel):
     emotions: list[str] | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     impression: str | None = None
+    reasoning_chain: str | None = None
 
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
@@ -117,41 +119,32 @@ class SimulationResponse(BaseModel):
 # ── Input ─────────────────────────────────────────────────────────────────────
 
 class PersonaInput(BaseModel):
+    # ── 필수 ──────────────────────────────────────────────────────────────────
     persona_id: str
     name: str
     age: int = Field(ge=13, le=80)
     job: str
+    context: str = Field(description="지금 이 순간의 상황")
+    drop_off_trigger: str = Field(description="즉시 스크롤을 넘기게 만드는 조건")
 
-    # 기존 필드
-    platform: str | None = Field(default=None, description="광고를 보는 플랫폼 — e.g. '인스타그램', '유튜브'")
-    context: str = Field(description="Situational context right now")
-    drop_off_trigger: str = Field(description="Specific things that make you instantly scroll away")
-    mbti: str | None = None
+    # ── 인구통계 ──────────────────────────────────────────────────────────────
+    gender: str | None = Field(default=None, description="성별 — e.g. '남성', '여성'")
+
+    # ── 관심사 ────────────────────────────────────────────────────────────────
     interests: list[str] | None = None
-    income_level: str | None = Field(default=None, description="소득 수준 — e.g. '저소득', '중산층', '고소득'")
+
+    # ── 구매 성향 ─────────────────────────────────────────────────────────────
     purchase_pattern: str | None = Field(default=None, description="구매 성향 — e.g. '충동구매 잦음', '비교 후 구매'")
-    brand_sensitivity: str | None = Field(default=None, description="브랜드 민감도 — e.g. '브랜드 중시', '가격 중시'")
-    typical_ad_behavior: str | None = Field(default=None, description="평소 광고 반응 패턴")
-    value_keywords: str | None = Field(default=None, description="광고에서 반응하는 키워드")
-    emotional_state: str | None = Field(default=None, description="현재 감정 상태")
-
-    # IO Spec / Input.md 추가 필드
-    segment: str | None = Field(default=None, description="세그먼트 — e.g. '30s_female_urban'")
-    pain_points: list[str] | None = Field(default=None, description="해결하고 싶은 결핍 리스트")
-    interest_keywords: list[str] | None = Field(default=None, description="관심사 키워드")
+    deal_prone_score: float | None = Field(default=None, ge=0.0, le=1.0, description="가격 할인 민감도 0.0~1.0")
     price_threshold: int | None = Field(default=None, description="지출 가능한 최대 예산 (원)")
+
+    # ── 제품 관여도 ───────────────────────────────────────────────────────────
     brand_loyalty: float | None = Field(default=None, ge=0.0, le=1.0, description="브랜드 충성도 0.0~1.0")
-    media_preferences: dict[str, float] | None = Field(default=None, description="매체별 선호도 점수")
-    active_time_windows: list[str] | None = Field(default=None, description="주 미디어 소비 시간대")
 
-    # 여태호 요구사항 — 부정적 앵커용
-    ad_repellent_words: list[str] | None = Field(default=None, description="거부감을 주는 광고 표현")
-
-    # Lichtenstein et al. (1997) DPP — 가격 할인 민감도
-    deal_prone_score: float | None = Field(
-        default=None, ge=0.0, le=1.0,
-        description="Deal Proneness Score — 0.0 가격 무관심(품질 중시) / 0.5 보통 / 1.0 할인·혜택에 강하게 반응"
-    )
+    # ── 상황 / 심리 ───────────────────────────────────────────────────────────
+    platform: str | None = Field(default=None, description="광고를 보는 플랫폼 — e.g. '인스타그램', '유튜브'")
+    mbti: str | None = None
+    emotional_state: str | None = Field(default=None, description="현재 감정 상태")
 
 
 class SimulationRequest(BaseModel):

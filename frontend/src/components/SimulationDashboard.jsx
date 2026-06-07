@@ -18,10 +18,10 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-export default function SimulationDashboard() {
+export default function SimulationDashboard({ initialContent = "", onBack }) {
   const { result, loading, error, simulate, reset } = useSimulation();
 
-  const [adContent, setAdContent] = useState("");
+  const [adContent, setAdContent] = useState(initialContent);
   const [adType, setAdType] = useState("IMAGE");
   const [mediaFile, setMediaFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -32,23 +32,19 @@ export default function SimulationDashboard() {
   const handleFile = useCallback((file) => {
     if (!file) return;
     setFileError(null);
-
     if (!ACCEPTED_ALL.includes(file.type)) {
       setFileError("JPG·PNG·GIF·WEBP 이미지 또는 MP4·MOV·AVI·WEBM 영상만 업로드 가능합니다.");
       return;
     }
-
     const isVideo = ACCEPTED_VIDEO.includes(file.type);
     const maxBytes = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
     if (file.size > maxBytes) {
       setFileError(isVideo ? "영상은 50MB 이하만 가능합니다." : "이미지는 10MB 이하만 가능합니다.");
       return;
     }
-
     setMediaFile(file);
     setAdType(isVideo ? "VIDEO" : "IMAGE");
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setPreviewUrl(URL.createObjectURL(file));
   }, []);
 
   const handleFileInput = useCallback((e) => {
@@ -62,11 +58,8 @@ export default function SimulationDashboard() {
     handleFile(e.dataTransfer.files?.[0]);
   }, [handleFile]);
 
-  // previewUrl 교체 또는 컴포넌트 언마운트 시 메모리 해제
   useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
 
   const removeMedia = useCallback(() => {
@@ -104,42 +97,51 @@ export default function SimulationDashboard() {
   }, [canSubmit, simulate, adContent, adType, mediaFile]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-6 md:p-10">
+    <div className="min-h-screen bg-brand-bg text-brand-text p-6 md:p-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-black tracking-tight text-white">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-xs font-bold text-brand-muted hover:text-sky-500 transition-colors mb-4"
+          >
+            ← 홈으로
+          </button>
+        )}
+        <h1 className="font-display text-2xl font-black tracking-tight text-brand-text">
           광고 시뮬레이터
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-brand-muted mt-1">
           AI 페르소나가 실제 사람처럼 광고에 반응합니다 — 형식적인 AI 평가 없이.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mb-10">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 space-y-5">
+        <div className="bg-white border border-sky-400/20 rounded-2xl p-6 space-y-5 shadow-card">
 
-          {/* ── 미디어 업로드 영역 ── */}
+          {/* ── 미디어 업로드 ── */}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-              광고 미디어 <span className="text-gray-600 normal-case font-normal">(선택)</span>
+            <label className="block text-xs font-bold text-brand-muted uppercase tracking-widest mb-2">
+              광고 미디어{" "}
+              <span className="text-brand-light normal-case font-normal">(선택)</span>
             </label>
 
             {!mediaFile ? (
               <div
-                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer
-                  ${dragOver
-                    ? "border-indigo-400 bg-indigo-950/30"
-                    : "border-gray-700 hover:border-gray-500 bg-gray-800/40"
-                  }`}
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                  dragOver
+                    ? "border-sky-400 bg-sky-50"
+                    : "border-sky-400/25 hover:border-sky-400/50 bg-brand-bg"
+                }`}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <div className="text-3xl mb-2">📎</div>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-brand-muted">
                   이미지 또는 영상을 드래그하거나 클릭해서 업로드
                 </p>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-xs text-brand-light mt-1">
                   이미지: JPG·PNG·GIF·WEBP (최대 10MB) &nbsp;|&nbsp; 영상: MP4·MOV·AVI·WEBM (최대 50MB)
                 </p>
                 <input
@@ -152,32 +154,20 @@ export default function SimulationDashboard() {
                 />
               </div>
             ) : (
-              <div className="relative rounded-xl overflow-hidden border border-gray-700 bg-gray-800">
+              <div className="relative rounded-xl overflow-hidden border border-sky-400/20">
                 {isVideo ? (
-                  <video
-                    src={previewUrl}
-                    controls
-                    className="w-full max-h-64 object-contain bg-black"
-                  />
+                  <video src={previewUrl} controls className="w-full max-h-64 object-contain bg-brand-text" />
                 ) : (
-                  <img
-                    src={previewUrl}
-                    alt="미리보기"
-                    className="w-full max-h-64 object-contain bg-gray-900"
-                  />
+                  <img src={previewUrl} alt="미리보기" className="w-full max-h-64 object-contain bg-brand-bg" />
                 )}
-                <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border-t border-gray-700">
-                  <span className="text-xs text-gray-400 truncate flex-1">
-                    {mediaFile.name}
-                  </span>
-                  <span className="text-xs text-gray-600 shrink-0">
-                    {formatFileSize(mediaFile.size)}
-                  </span>
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border-t border-sky-400/15">
+                  <span className="text-xs text-brand-muted truncate flex-1">{mediaFile.name}</span>
+                  <span className="text-xs text-brand-light shrink-0">{formatFileSize(mediaFile.size)}</span>
                   <button
                     type="button"
                     onClick={removeMedia}
                     disabled={loading}
-                    className="text-xs text-gray-500 hover:text-rose-400 transition-colors shrink-0 ml-1"
+                    className="text-xs text-brand-light hover:text-red-500 transition-colors shrink-0 ml-1"
                   >
                     ✕ 제거
                   </button>
@@ -186,21 +176,22 @@ export default function SimulationDashboard() {
             )}
 
             {fileError && (
-              <p className="text-xs text-rose-400 mt-1.5">{fileError}</p>
+              <p className="text-xs text-red-500 mt-1.5">{fileError}</p>
             )}
           </div>
 
           {/* ── 광고 텍스트 ── */}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+            <label className="block text-xs font-bold text-brand-muted uppercase tracking-widest mb-2">
               광고 내용{" "}
-              <span className="text-gray-600 normal-case font-normal">
+              <span className="text-brand-light normal-case font-normal">
                 {mediaFile ? "(선택 — 미디어에 텍스트 보완 가능)" : "(필수 — 최소 10자)"}
               </span>
             </label>
             <textarea
-              className="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-sm text-gray-100
-                         placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
+              className="w-full bg-brand-bg border border-sky-400/20 rounded-xl p-3.5 text-sm text-brand-text
+                         placeholder-brand-light focus:outline-none focus:border-sky-400 focus:bg-white
+                         focus:shadow-[0_0_0_3px_rgba(56,189,248,0.12)] resize-none transition-all"
               rows={4}
               placeholder={
                 mediaFile
@@ -216,7 +207,7 @@ export default function SimulationDashboard() {
           {/* ── 광고 유형 + 버튼 ── */}
           <div className="flex items-center gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+              <label className="block text-xs font-bold text-brand-muted uppercase tracking-widest mb-2">
                 광고 유형
               </label>
               <div className="flex gap-2">
@@ -225,10 +216,10 @@ export default function SimulationDashboard() {
                     key={t}
                     type="button"
                     onClick={() => setAdType(t)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-bold border transition-colors ${
+                    className={`text-xs px-3 py-1.5 rounded-full font-bold border transition-all ${
                       adType === t
-                        ? "bg-indigo-600 border-indigo-500 text-white"
-                        : "bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400"
+                        ? "bg-sky-400 border-sky-400 text-white shadow-[0_3px_10px_rgba(56,189,248,0.28)]"
+                        : "bg-white border-sky-400/20 text-brand-muted hover:border-sky-400/50 hover:bg-sky-50 hover:text-sky-600"
                     }`}
                   >
                     {AD_TYPE_LABELS[t]}
@@ -242,7 +233,7 @@ export default function SimulationDashboard() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="px-4 py-2 text-sm text-gray-400 border border-gray-600 rounded-lg hover:border-gray-400 transition-colors"
+                  className="px-4 py-2 text-sm font-bold text-brand-muted border border-sky-400/20 bg-white rounded-xl hover:border-sky-400/40 hover:text-sky-500 transition-colors"
                 >
                   초기화
                 </button>
@@ -250,8 +241,11 @@ export default function SimulationDashboard() {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500
-                           text-sm font-bold rounded-lg transition-colors"
+                className="px-6 py-2 bg-gradient-to-r from-sky-400 to-sky-500 hover:from-sky-500 hover:to-sky-600
+                           disabled:from-brand-bg2 disabled:to-brand-bg2 disabled:text-brand-light
+                           text-sm font-bold text-white rounded-xl transition-all
+                           shadow-[0_4px_14px_rgba(56,189,248,0.28)] hover:shadow-[0_8px_22px_rgba(56,189,248,0.35)]
+                           hover:-translate-y-0.5 active:translate-y-0"
               >
                 {loading ? "시뮬레이션 중…" : "시뮬레이션 실행"}
               </button>
@@ -262,16 +256,16 @@ export default function SimulationDashboard() {
 
       {loading && (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500">AI 페르소나들이 광고에 반응하는 중…</p>
-          <p className="text-xs text-gray-600">
+          <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-brand-muted">AI 페르소나들이 광고에 반응하는 중…</p>
+          <p className="text-xs text-brand-light">
             (캐스케이드 파이프라인: 페르소나 선행 스크리닝 후 전체 실행)
           </p>
         </div>
       )}
 
       {error && (
-        <div className="bg-rose-950 border border-rose-700 rounded-xl p-5 text-sm text-rose-300">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-600">
           <span className="font-bold">시뮬레이션 실패: </span>{error}
         </div>
       )}
@@ -285,16 +279,13 @@ export default function SimulationDashboard() {
 
           <section>
             <SectionLabel>3단계 인지 퍼널</SectionLabel>
-            <CognitiveTimeline
-              metrics={result.metrics}
-              totalPersonas={result.totalPersonas}
-            />
+            <CognitiveTimeline metrics={result.metrics} totalPersonas={result.totalPersonas} />
           </section>
 
           <section>
             <SectionLabel>
               1단계 주요 키워드&nbsp;
-              <span className="text-gray-600 font-normal text-xs">(전체 페르소나 빈도)</span>
+              <span className="text-brand-light font-normal text-xs">(전체 페르소나 빈도)</span>
             </SectionLabel>
             <KeywordFrequency results={result.results} />
           </section>
@@ -302,17 +293,13 @@ export default function SimulationDashboard() {
           <section>
             <SectionLabel>
               페르소나별 인지 루프&nbsp;
-              <span className="text-gray-600 font-normal text-xs">
+              <span className="text-brand-light font-normal text-xs">
                 ({result.totalPersonas}명)
               </span>
             </SectionLabel>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {result.results.map((r) => (
-                <PersonaFeedbackCard
-                  key={r.personaId}
-                  result={r}
-                  persona={null}
-                />
+                <PersonaFeedbackCard key={r.personaId} result={r} persona={null} />
               ))}
             </div>
           </section>
@@ -324,7 +311,7 @@ export default function SimulationDashboard() {
 
 function SectionLabel({ children }) {
   return (
-    <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+    <h2 className="text-xs font-bold text-brand-muted uppercase tracking-widest mb-3">
       {children}
     </h2>
   );
@@ -346,18 +333,18 @@ function KeywordFrequency({ results }) {
   const max = sorted[0]?.[1] ?? 1;
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-      <div className="space-y-2">
+    <div className="bg-white border border-sky-400/20 rounded-xl p-6 shadow-card">
+      <div className="space-y-2.5">
         {sorted.map(([kw, count]) => (
           <div key={kw} className="flex items-center gap-3">
-            <span className="text-sm text-gray-200 w-32 truncate">{kw}</span>
-            <div className="flex-1 h-2.5 bg-gray-800 rounded-full overflow-hidden">
+            <span className="text-sm text-brand-text w-32 truncate font-medium">{kw}</span>
+            <div className="flex-1 h-2.5 bg-brand-bg2 rounded-full overflow-hidden">
               <div
-                className="h-full bg-indigo-500 rounded-full"
+                className="h-full bg-gradient-to-r from-sky-400 to-sky-500 rounded-full"
                 style={{ width: `${(count / max) * 100}%` }}
               />
             </div>
-            <span className="text-xs text-gray-500 tabular-nums w-6 text-right">
+            <span className="text-xs text-brand-muted tabular-nums w-6 text-right font-bold">
               {count}
             </span>
           </div>
