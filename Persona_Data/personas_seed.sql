@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS personas (
     brand_loyalty       NUMERIC(3, 2),
     pain_points         TEXT[],
     interest_keywords   TEXT[],
-    ad_repellent_words  TEXT[]
+    ad_repellent_words  TEXT[],
+    deal_prone_score    NUMERIC(3, 2) CHECK (deal_prone_score >= 0.0 AND deal_prone_score <= 1.0)
 );
 
 -- ============================================================
@@ -34,7 +35,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     '01641cd0-7048-4c32-ac6b-aebad6d77d31',
     '주부 박지영', 35, '전업주부', 'ISFJ', '30s_female_homemaker', '네이버',
@@ -49,7 +50,7 @@ INSERT INTO personas (
     50000, 0.65,
     ARRAY['아이에게 안전한 제품 찾기 어려움', '배송비가 아깝다', '후기 없으면 믿기 어려움'],
     ARRAY['육아', '유아용품', '살림', '안전', '국내산', '요리'],
-    ARRAY['배송비 별도', 'KC인증 없음', '성인 전용']
+    ARRAY['배송비 별도', 'KC인증 없음', '성인 전용'], 0.75
 );
 
 -- 2. 프리랜서 최준호 (31세, ENFJ, 인스타그램)
@@ -58,7 +59,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     '2243f688-371f-42a3-bc50-a2ed5e4652bd',
     '프리랜서 최준호', 31, '프리랜서 디자이너', 'ENFJ', '30s_male_creative', '인스타그램',
@@ -73,7 +74,7 @@ INSERT INTO personas (
     80000, 0.25,
     ARRAY['수입 불규칙해 큰 지출 부담', '클리셰 광고에 극도의 피로감', '작업 중 집중 방해 짜증'],
     ARRAY['그래픽디자인', '타이포그래피', '브랜딩', '미니멀', '감성', '빈티지'],
-    ARRAY['지금 바로 구매하세요', '놀라운 효과', '최저가 보장']
+    ARRAY['지금 바로 구매하세요', '놀라운 효과', '최저가 보장'], 0.35
 );
 
 -- 3. 주부 김영순 (55세, ESFJ, 유튜브)
@@ -82,7 +83,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     '2f1a8d74-3c5e-4b9d-a260-8e7f1c4b0d36',
     '주부 김영순', 55, '전업주부 (파트타임 근무)', 'ESFJ', '50s_female_homemaker', '유튜브',
@@ -97,7 +98,7 @@ INSERT INTO personas (
     80000, 0.80,
     ARRAY['복잡한 앱 사용 어려움', '낯선 브랜드 신뢰 안 됨', '빠른 화면 전환 따라가기 어려움'],
     ARRAY['건강', '요리', '가족', '드라마', '건강식품', '여행'],
-    ARRAY['앱 설치 후 이용 가능', 'QR코드 스캔하세요', '인스타 DM 문의']
+    ARRAY['앱 설치 후 이용 가능', 'QR코드 스캔하세요', '인스타 DM 문의'], 0.45
 );
 
 -- 4. 고등학생 박서연 (17세, INFP, 틱톡)
@@ -106,7 +107,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     '3a7f2e91-bc4d-4f5a-8e23-1d6c9f0e4b78',
     '고등학생 박서연', 17, '고등학교 3학년', 'INFP', '10s_female_student', '틱톡',
@@ -121,7 +122,7 @@ INSERT INTO personas (
     10000, 0.05,
     ARRAY['용돈이 너무 적음', '원하는 제품 살 돈 없음', '비싼 광고 볼 때 박탈감'],
     ARRAY['아이돌', '밈', '바이럴', '인플루언서', '패션', '뷰티'],
-    ARRAY['중년 여성에게 인기', '품격 있는', '40대 필수 아이템']
+    ARRAY['중년 여성에게 인기', '품격 있는', '40대 필수 아이템'], 0.80
 );
 
 -- 5. 자영업자 이철수 (43세, ESTJ, 유튜브)
@@ -130,7 +131,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     '5c8d1a20-6e3f-4b2c-9d75-2a0f8e7c5d91',
     '자영업자 이철수', 43, '음식점 자영업자', 'ESTJ', '40s_male_selfemployed', '유튜브',
@@ -145,7 +146,7 @@ INSERT INTO personas (
     100000, 0.40,
     ARRAY['시간이 없음', '효과 없는 서비스에 돈 낭비 싫음', '복잡한 절차 싫음'],
     ARRAY['자영업', '비용절감', '업무효율', '배달', '마케팅', '세금'],
-    ARRAY['MZ세대 필수', '힙한 감성으로', '트렌디한 브랜드']
+    ARRAY['MZ세대 필수', '힙한 감성으로', '트렌디한 브랜드'], 0.60
 );
 
 -- 6. 대학생 김민준 (22세, ENTP, 유튜브)
@@ -154,7 +155,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     'a1b2c3d4-e5f6-7890-abcd-ef1234567891',
     '대학생 김민준', 22, '대학교 3학년', 'ENTP', '20s_male_student', '유튜브',
@@ -169,7 +170,7 @@ INSERT INTO personas (
     30000, 0.15,
     ARRAY['취업 준비 압박', '알바 수입으로 지출 한계', '쓸모없는 광고에 시간 낭비 싫음'],
     ARRAY['게임', '유튜브', '코딩', '취업', '운동', '음악'],
-    ARRAY['정가 구매', '프리미엄 전용', '회원가입 후 이용 가능']
+    ARRAY['정가 구매', '프리미엄 전용', '회원가입 후 이용 가능'], 0.70
 );
 
 -- 7. 마케터 이수현 (27세, ESFP, 인스타그램)
@@ -178,7 +179,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     'b2c3d4e5-f6a7-8901-bcde-f12345678902',
     '마케터 이수현', 27, '중소기업 마케터', 'ESFP', '20s_female_worker', '인스타그램',
@@ -193,7 +194,7 @@ INSERT INTO personas (
     60000, 0.30,
     ARRAY['첫 직장이라 월급이 적음', '외모·자기관리에 돈 많이 씀', 'SNS에서 뒤처지는 느낌'],
     ARRAY['뷰티', '패션', '카페', '여행', '인테리어', '맛집'],
-    ARRAY['아줌마들도 선택한', '나이 상관없이 효과적', '갱년기에도 좋은']
+    ARRAY['아줌마들도 선택한', '나이 상관없이 효과적', '갱년기에도 좋은'], 0.40
 );
 
 -- 8. 개발자 박준영 (33세, INTJ, 유튜브)
@@ -202,7 +203,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     'c3d4e5f6-a7b8-9012-cdef-123456789013',
     '개발자 박준영', 33, 'IT 스타트업 개발자', 'INTJ', '30s_male_developer', '유튜브',
@@ -217,7 +218,7 @@ INSERT INTO personas (
     150000, 0.40,
     ARRAY['과장 광고에 극도의 피로감', '야근으로 시간 부족', '쓸모없는 구독·서비스에 돈 낭비'],
     ARRAY['개발', 'IT기기', '생산성툴', '책', '운동', '투자'],
-    ARRAY['100% 효과 보장', '기적의 성분', '세계 최초 기술']
+    ARRAY['100% 효과 보장', '기적의 성분', '세계 최초 기술'], 0.25
 );
 
 -- 9. 부장 정병철 (52세, ISTJ, 네이버)
@@ -226,7 +227,7 @@ INSERT INTO personas (
     context, emotional_state, drop_off_trigger,
     brand_sensitivity, income_level, purchase_pattern, typical_ad_behavior,
     value_keywords, price_threshold, brand_loyalty,
-    pain_points, interest_keywords, ad_repellent_words
+    pain_points, interest_keywords, ad_repellent_words, deal_prone_score
 ) VALUES (
     'd4e5f6a7-b8c9-0123-defa-234567890124',
     '부장 정병철', 52, '중견기업 영업 부장', 'ISTJ', '50s_male_whitecollar', '네이버',
@@ -241,5 +242,5 @@ INSERT INTO personas (
     200000, 0.75,
     ARRAY['건강 관리가 점점 중요해짐', '노후 자금 걱정', '믿을 수 없는 광고 범람'],
     ARRAY['건강', '골프', '재테크', '자동차', '여행', '뉴스'],
-    ARRAY['MZ세대 필수템', '요즘 핫한', '인스타 인증 필수']
+    ARRAY['MZ세대 필수템', '요즘 핫한', '인스타 인증 필수'], 0.35
 );

@@ -47,13 +47,11 @@ export default function PersonaFeedbackCard({ result, persona }) {
       <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
         <div>
           <span className="font-bold text-gray-100 text-sm">
-            {persona?.name ?? result.personaId}
+            {persona?.name ?? result.personaName ?? result.personaId}
           </span>
-          {persona && (
-            <span className="text-xs text-gray-500 ml-2">
-              {persona.age}세 · {persona.job}
-            </span>
-          )}
+          <span className="text-xs text-gray-500 ml-2">
+            {(persona?.age ?? result.personaAge)}세 · {(persona?.job ?? result.personaJob)}
+          </span>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${badge.className}`}>
           {badge.label}

@@ -10,7 +10,6 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 _VISION_MODEL = "gpt-4o-mini"
-_API_KEY = os.getenv("OPENAI_API_KEY")
 
 _client: AsyncOpenAI | None = None
 
@@ -18,7 +17,8 @@ _client: AsyncOpenAI | None = None
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=_API_KEY)
+        # 모듈 로드 시점이 아닌 첫 호출 시점에 읽어야 load_dotenv() 이후 값이 보장됨
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     return _client
 
 

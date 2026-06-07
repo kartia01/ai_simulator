@@ -19,4 +19,4 @@ frontend/node_modules/
 __pycache__/
 *.pyc
 *.pyo
-ai-engine/=*
+ai-engine/venv/

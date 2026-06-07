@@ -1,4 +1,4 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 export async function runSimulation(payload) {
   const { mediaFile, ...rest } = payload;
@@ -10,6 +10,9 @@ export async function runSimulation(payload) {
     form.append("adContent", rest.adContent ?? "");
     form.append("adType", rest.adType ?? "IMAGE");
     form.append("mediaFile", mediaFile);
+    if (rest.objective) form.append("objective", rest.objective);
+    if (rest.productPrice != null) form.append("productPrice", String(rest.productPrice));
+    for (const pid of rest.personaIds ?? []) form.append("personaIds", pid);
 
     res = await fetch(`${BASE_URL}/simulate`, {
       method: "POST",

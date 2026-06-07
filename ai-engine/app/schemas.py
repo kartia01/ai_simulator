@@ -72,6 +72,9 @@ class PersonaReactionSignal(BaseModel):
     objective: str
 
     persona_id: str
+    persona_name: str
+    persona_age: int
+    persona_job: str
     segment: str
 
     # P0 필수
@@ -143,6 +146,12 @@ class PersonaInput(BaseModel):
 
     # 여태호 요구사항 — 부정적 앵커용
     ad_repellent_words: list[str] | None = Field(default=None, description="거부감을 주는 광고 표현")
+
+    # Lichtenstein et al. (1997) DPP — 가격 할인 민감도
+    deal_prone_score: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Deal Proneness Score — 0.0 가격 무관심(품질 중시) / 0.5 보통 / 1.0 할인·혜택에 강하게 반응"
+    )
 
 
 class SimulationRequest(BaseModel):

@@ -158,6 +158,10 @@ Output ONLY:
 """
 
 
+def _escape_braces(s: str) -> str:
+    return s.replace("{", "{{").replace("}", "}}")
+
+
 def build_combined_prompt(
     ad_content: str,
     context: str,
@@ -165,6 +169,7 @@ def build_combined_prompt(
     objective: str,
     product_price: int | None,
     price_threshold: int | None,
+    deal_prone_score: float | None = None,
 ) -> str:
     if objective == "conversion":
         if product_price and price_threshold:
@@ -173,14 +178,19 @@ def build_combined_prompt(
             price_line = f"\n  상품 가격: {product_price:,}원"
         else:
             price_line = ""
+        if deal_prone_score is not None and deal_prone_score >= 0.7 and product_price:
+            price_line += "\n  ※ 당신은 가격 혜택에 민감하다 — 할인·프로모션 여부가 결정에 큰 영향을 준다."
+        elif deal_prone_score is not None and deal_prone_score <= 0.3 and product_price:
+            price_line += "\n  ※ 당신은 가격보다 품질과 가치를 본다 — 할인 여부는 결정적이지 않다."
         step3_instruction = _COMBINED_STEP3_CONVERSION.format(price_line=price_line)
     else:
         step3_instruction = _COMBINED_STEP3_AWARENESS
 
+    # DB·사용자 입력값에 중괄호가 있으면 str.format() ValueError 발생 → 이스케이프
     return COMBINED_USER_PROMPT.format(
-        ad_content=ad_content,
-        context=context,
-        drop_off_trigger=drop_off_trigger,
+        ad_content=_escape_braces(ad_content),
+        context=_escape_braces(context),
+        drop_off_trigger=_escape_braces(drop_off_trigger),
         step3_instruction=step3_instruction,
     )
 
@@ -207,11 +217,20 @@ def build_profile_block(persona) -> str:
     if persona.pain_points:
         lines.append(f"  Pain points  : {', '.join(persona.pain_points)}")
     if persona.interest_keywords:
-        lines.append(f"  Interests    : {', '.join(persona.interest_keywords)}")
+        lines.append(f"  Int.Keywords : {', '.join(persona.interest_keywords)}")
     if persona.price_threshold is not None:
         lines.append(f"  Max budget   : {persona.price_threshold:,}원")
     if persona.brand_loyalty is not None:
         lines.append(f"  Brand loyalty: {persona.brand_loyalty:.2f} (0=무관심, 1=충성)")
+    if persona.deal_prone_score is not None:
+        dpp = persona.deal_prone_score
+        if dpp >= 0.7:
+            dpp_label = "높음 — 할인·혜택 광고에 즉각 반응, 가격 혜택이 결정적"
+        elif dpp <= 0.3:
+            dpp_label = "낮음 — 가격보다 품질·가치 중시, 할인에 큰 흔들림 없음"
+        else:
+            dpp_label = "보통 — 할인은 참고하지만 결정적이진 않음"
+        lines.append(f"  Deal proneness: {dpp:.2f} — {dpp_label}")
     if persona.ad_repellent_words:
         lines.append(f"  Hates these  : {', '.join(persona.ad_repellent_words)}")
 

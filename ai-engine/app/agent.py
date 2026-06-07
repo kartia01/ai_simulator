@@ -5,8 +5,10 @@ import json
 import logging
 import os
 import re
+import statistics
 
 from openai import AsyncOpenAI, RateLimitError, AuthenticationError
+from pydantic import ValidationError
 
 from .prompts import (
     SYSTEM_PROMPT_TEMPLATE,
@@ -30,7 +32,6 @@ from .vision import build_visual_ad_description
 
 logger = logging.getLogger(__name__)
 
-_API_KEY = os.getenv("OPENAI_API_KEY")
 _MODEL = "gpt-4o-mini"
 
 MAX_RETRIES = 3
@@ -47,7 +48,8 @@ _SEMAPHORE_LIMIT = 15
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=_API_KEY)
+        # 모듈 로드 시점이 아닌 첫 호출 시점에 읽어야 load_dotenv() 이후 값이 보장됨
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     return _client
 
 
@@ -66,6 +68,11 @@ def _assign_temperature(persona: PersonaInput) -> float:
     # 충동 구매 성향 → 높은 variability
     if persona.purchase_pattern and "충동" in persona.purchase_pattern:
         temp += 0.15
+
+    # DPP(Deal Proneness): 높을수록 가격 자극에 감정적·즉각적으로 반응 → variability 증가
+    # 낮을수록 가격보다 가치/품질로 판단 → 안정적 반응
+    if persona.deal_prone_score is not None:
+        temp += (persona.deal_prone_score - 0.5) * 0.20
 
     # 브랜드 충성도 낮을수록 → 더 가변적 반응
     if persona.brand_loyalty is not None:
@@ -155,6 +162,9 @@ def _to_signal(
         creative_id=ad_id,
         objective=objective,
         persona_id=persona.persona_id,
+        persona_name=persona.name,
+        persona_age=persona.age,
+        persona_job=persona.job,
         segment=persona.segment or "unknown",
         attention=attention,
         sentiment=step2.sentiment,
@@ -178,9 +188,8 @@ def _filter_outliers(
         return signals, 0
 
     scores = sorted(s.attention for s in signals)
-    n = len(scores)
-    q1 = scores[n // 4]
-    q3 = scores[(3 * n) // 4]
+    qs = statistics.quantiles(scores, n=4)
+    q1, q3 = qs[0], qs[2]
     iqr = q3 - q1
 
     # IQR가 0이면 (모든 점수 동일) 필터 생략
@@ -223,6 +232,7 @@ async def _simulate_one(
     ad_content: str,
     objective: str,
     product_price: int | None,
+    ad_id: str = "",
     attempt: int = 0,
 ) -> PersonaReactionSignal | None:
     temperature = _assign_temperature(persona)
@@ -246,6 +256,7 @@ async def _simulate_one(
         objective=objective,
         product_price=product_price,
         price_threshold=persona.price_threshold,
+        deal_prone_score=persona.deal_prone_score,
     )
 
     try:
@@ -288,10 +299,21 @@ async def _simulate_one(
                     persona.persona_id, attempt + 1,
                 )
                 await asyncio.sleep(1)
-                return await _simulate_one(persona, ad_content, objective, product_price, attempt + 1)
+                return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
             logger.error("Persona %s — 재시도 후에도 비한국어 응답", persona.persona_id)
 
-        return _to_signal(internal, persona, "pending", objective)
+        return _to_signal(internal, persona, ad_id, objective)
+
+    except (KeyError, json.JSONDecodeError, ValidationError) as exc:
+        if attempt < MAX_RETRIES:
+            logger.warning(
+                "Persona %s — JSON 파싱/검증 실패, 재시도 (attempt %d): %s",
+                persona.persona_id, attempt + 1, exc,
+            )
+            await asyncio.sleep(1)
+            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
+        logger.error("Persona %s — JSON 파싱/검증 영구 실패: %s", persona.persona_id, exc)
+        return None
 
     except RateLimitError:
         if attempt >= MAX_RETRIES:
@@ -300,7 +322,7 @@ async def _simulate_one(
         wait = 2 ** attempt * 5
         logger.warning("Persona %s — rate limit, %ds 대기 (attempt %d)", persona.persona_id, wait, attempt + 1)
         await asyncio.sleep(wait)
-        return await _simulate_one(persona, ad_content, objective, product_price, attempt + 1)
+        return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
 
     except AuthenticationError:
         logger.error("Persona %s — OpenAI 인증 오류: OPENAI_API_KEY 확인", persona.persona_id)
@@ -311,7 +333,7 @@ async def _simulate_one(
             wait = 2 ** attempt
             logger.warning("Retrying persona %s (attempt %d): %s", persona.persona_id, attempt + 1, exc)
             await asyncio.sleep(wait)
-            return await _simulate_one(persona, ad_content, objective, product_price, attempt + 1)
+            return await _simulate_one(persona, ad_content, objective, product_price, ad_id, attempt + 1)
         logger.error("Persona %s failed permanently: %s", persona.persona_id, exc, exc_info=True)
         return None
 
@@ -342,19 +364,14 @@ async def run_cascade_simulation(
         logger.info("ad_id=%s | 비전 분석 완료 (%d chars)", ad_id, len(ad_content))
 
     logger.info("ad_id=%s | 전체 %d 페르소나 병렬 실행", ad_id, len(personas))
-    raw_signals = [
-        s for s in await asyncio.gather(*[
-            _simulate_one(p, ad_content, objective, product_price) for p in personas
-        ])
-        if s is not None
-    ]
+    gather_results = await asyncio.gather(
+        *[_simulate_one(p, ad_content, objective, product_price, ad_id) for p in personas],
+        return_exceptions=True,
+    )
+    raw_signals = [s for s in gather_results if isinstance(s, PersonaReactionSignal)]
 
     if not raw_signals:
         raise RuntimeError("All persona simulations failed — check OPENAI_API_KEY/quota")
-
-    # creative_id를 실제 ad_id로 채움 (_simulate_one에서 "pending"으로 임시 설정)
-    for sig in raw_signals:
-        sig.creative_id = ad_id
 
     # IQR 이상치 감지 및 제거 (여태호 요구사항 §11.1 전략 5)
     clean_signals, outlier_count = _filter_outliers(raw_signals)
@@ -387,7 +404,6 @@ def _calc_metrics(signals: list[PersonaReactionSignal], outlier_count: int = 0) 
     avg_attention = sum(s.attention for s in signals) / n
     avg_appeal = round(avg_attention * 4 + 1, 2)
 
-    dropped = sum(1 for s in signals if not s.click_intent and s.attention < 0.5)
     # VTR: 이탈하지 않은 비율 (sentiment >= 0 또는 click_intent=True)
     stayed = sum(1 for s in signals if s.click_intent or s.sentiment >= 0)
     clicked = sum(1 for s in signals if s.click_intent)
