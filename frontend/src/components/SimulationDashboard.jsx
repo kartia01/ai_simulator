@@ -18,6 +18,20 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function formatTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return "방금 전";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}분 전`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}시간 전`;
+  return new Date(ts).toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+}
+
+const VERDICT_SHORT = {
+  "집행 권장":     { label: "권장", color: "bg-emerald-500" },
+  "수정 후 재검토": { label: "재검토", color: "bg-amber-500" },
+  "집행 비권장":   { label: "비권장", color: "bg-red-500" },
+};
+
 export default function SimulationDashboard({ initialContent = "", onBack }) {
   const { result, loading, error, simulate, reset } = useSimulation();
 
@@ -28,6 +42,9 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
   const [dragOver, setDragOver] = useState(false);
   const [fileError, setFileError] = useState(null);
   const fileInputRef = useRef(null);
+
+  const [history, setHistory] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
 
   const handleFile = useCallback((file) => {
     if (!file) return;
@@ -84,11 +101,15 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
     setAdContent("");
   }, [reset, removeMedia]);
 
+  const pendingMetaRef = useRef(null);
+
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     if (!canSubmit) return;
+    const id = `ad-${Date.now()}`;
+    pendingMetaRef.current = { id, adContent, adType, mediaFileName: mediaFile?.name ?? null, timestamp: Date.now() };
     simulate({
-      adId: `ad-${Date.now()}`,
+      adId: id,
       adContent,
       adType,
       personaIds: [],
@@ -96,8 +117,76 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
     });
   }, [canSubmit, simulate, adContent, adType, mediaFile]);
 
+  useEffect(() => {
+    if (!result || !pendingMetaRef.current) return;
+    const meta = pendingMetaRef.current;
+    pendingMetaRef.current = null;
+    const entry = { ...meta, result };
+    setHistory(prev => [entry, ...prev]);
+    setSelectedId(entry.id);
+  }, [result]);
+
+  const displayedResult = useMemo(() => {
+    if (!selectedId) return result;
+    return history.find(h => h.id === selectedId)?.result ?? result;
+  }, [selectedId, history, result]);
+
   return (
-    <div className="min-h-screen bg-brand-bg text-brand-text p-6 md:p-10">
+    <div className="h-screen bg-brand-bg text-brand-text flex overflow-hidden">
+      {/* ── 왼쪽 히스토리 사이드바 ── */}
+      <aside className="w-60 shrink-0 border-r border-sky-400/15 bg-white flex flex-col h-full">
+        <div className="px-4 py-4 border-b border-sky-400/15">
+          <p className="text-[10px] font-black uppercase tracking-widest text-brand-muted">테스트 기록</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {history.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-xs text-brand-light">아직 테스트 기록이 없습니다.</p>
+              <p className="text-xs text-brand-light mt-1">시뮬레이션을 실행하면 여기에 표시됩니다.</p>
+            </div>
+          ) : (
+            <ul className="py-2">
+              {history.map((h) => {
+                const verdict = h.result?.conclusion?.verdict;
+                const vs = verdict ? VERDICT_SHORT[verdict] : null;
+                const isActive = h.id === selectedId;
+                const label = h.adContent?.trim()
+                  ? h.adContent.trim().slice(0, 40) + (h.adContent.trim().length > 40 ? "…" : "")
+                  : h.mediaFileName
+                    ? `📎 ${h.mediaFileName}`
+                    : "광고 텍스트";
+                return (
+                  <li key={h.id}>
+                    <button
+                      onClick={() => setSelectedId(h.id)}
+                      className={`w-full text-left px-4 py-3 transition-colors border-l-2 ${
+                        isActive
+                          ? "border-sky-400 bg-sky-50"
+                          : "border-transparent hover:bg-brand-bg"
+                      }`}
+                    >
+                      <p className="text-xs text-brand-text font-medium leading-snug line-clamp-2">{label}</p>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        {vs ? (
+                          <span className={`${vs.color} text-white text-[9px] font-black px-1.5 py-0.5 rounded-full`}>
+                            {vs.label}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-brand-light">분석 중…</span>
+                        )}
+                        <span className="text-[9px] text-brand-light">{formatTime(h.timestamp)}</span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </aside>
+
+      {/* ── 오른쪽 메인 영역 ── */}
+      <div className="flex-1 h-full overflow-y-auto p-6 md:p-10">
       <div className="mb-8">
         {onBack && (
           <button
@@ -229,7 +318,7 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
             </div>
 
             <div className="ml-auto flex gap-3">
-              {result && (
+              {displayedResult && (
                 <button
                   type="button"
                   onClick={handleReset}
@@ -270,16 +359,16 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
         </div>
       )}
 
-      {result && !loading && (
+      {displayedResult && !loading && (
         <div className="space-y-8">
           <section>
             <SectionLabel>핵심 성과 지표</SectionLabel>
-            <MetricsPanel metrics={result.metrics} />
+            <MetricsPanel metrics={displayedResult.metrics} />
           </section>
 
           <section>
             <SectionLabel>3단계 인지 퍼널</SectionLabel>
-            <CognitiveTimeline metrics={result.metrics} totalPersonas={result.totalPersonas} />
+            <CognitiveTimeline metrics={displayedResult.metrics} totalPersonas={displayedResult.totalPersonas} />
           </section>
 
           <section>
@@ -287,24 +376,32 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
               1단계 주요 키워드&nbsp;
               <span className="text-brand-light font-normal text-xs">(전체 페르소나 빈도)</span>
             </SectionLabel>
-            <KeywordFrequency results={result.results} />
+            <KeywordFrequency results={displayedResult.results} />
           </section>
 
           <section>
             <SectionLabel>
               페르소나별 인지 루프&nbsp;
               <span className="text-brand-light font-normal text-xs">
-                ({result.totalPersonas}명)
+                ({displayedResult.totalPersonas}명)
               </span>
             </SectionLabel>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {result.results.map((r) => (
+              {displayedResult.results.map((r) => (
                 <PersonaFeedbackCard key={r.personaId} result={r} persona={null} />
               ))}
             </div>
           </section>
+
+          {displayedResult.conclusion && (
+            <section>
+              <SectionLabel>종합 결론</SectionLabel>
+              <ConclusionPanel conclusion={displayedResult.conclusion} />
+            </section>
+          )}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -314,6 +411,57 @@ function SectionLabel({ children }) {
     <h2 className="text-xs font-bold text-brand-muted uppercase tracking-widest mb-3">
       {children}
     </h2>
+  );
+}
+
+const VERDICT_STYLE = {
+  "집행 권장":     { bg: "bg-emerald-50", border: "border-emerald-300", badge: "bg-emerald-500", text: "text-emerald-700" },
+  "수정 후 재검토": { bg: "bg-amber-50",   border: "border-amber-300",   badge: "bg-amber-500",   text: "text-amber-700"   },
+  "집행 비권장":   { bg: "bg-red-50",     border: "border-red-300",     badge: "bg-red-500",     text: "text-red-700"     },
+};
+
+function ConclusionPanel({ conclusion }) {
+  const style = VERDICT_STYLE[conclusion.verdict] ?? VERDICT_STYLE["수정 후 재검토"];
+
+  return (
+    <div className={`border ${style.border} ${style.bg} rounded-xl p-6 shadow-card space-y-4`}>
+      <div className="flex items-center gap-3">
+        <span className={`${style.badge} text-white text-sm font-black px-4 py-1.5 rounded-full tracking-wide`}>
+          {conclusion.verdict}
+        </span>
+      </div>
+
+      <p className={`text-sm leading-relaxed ${style.text} font-medium`}>{conclusion.reason}</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        {conclusion.strengths?.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">강점</p>
+            <ul className="space-y-1.5">
+              {conclusion.strengths.map((s, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-brand-text">
+                  <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {conclusion.weaknesses?.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2">약점</p>
+            <ul className="space-y-1.5">
+              {conclusion.weaknesses.map((w, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-brand-text">
+                  <span className="text-red-400 mt-0.5 shrink-0">✗</span>
+                  {w}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

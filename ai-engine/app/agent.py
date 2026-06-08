@@ -17,13 +17,13 @@ from .prompts import (
     build_combined_prompt,
     build_profile_block,
     build_platform_behavior,
-    build_filter_type,
     build_memory_block,
 )
 from .schemas import (
     AdMetrics,
     AdType,
     CognitiveLoopResult,
+    Conclusion,
     FinalAction,
     PersonaInput,
     PersonaReactionSignal,
@@ -292,7 +292,6 @@ async def _simulate_one(
         platform_behavior=build_platform_behavior(persona.platform),
         context=persona.context,
         drop_off_trigger=persona.drop_off_trigger,
-        filter_type=build_filter_type(persona.mbti),
         profile_block=build_profile_block(persona),
         memory_block=memory_block,
     )
@@ -453,11 +452,15 @@ async def run_cascade_simulation(
         ad_id, len(clean_signals), len(personas), outlier_count,
     )
 
+    metrics = _calc_metrics(clean_signals, outlier_count)
+    conclusion = await _generate_conclusion(metrics, clean_signals, objective)
+
     return SimulationResponse(
         ad_id=ad_id,
         total_personas=len(clean_signals),
         results=clean_signals,
-        metrics=_calc_metrics(clean_signals, outlier_count),
+        metrics=metrics,
+        conclusion=conclusion,
     )
 
 
@@ -507,3 +510,55 @@ def _calc_metrics(signals: list[PersonaReactionSignal], outlier_count: int = 0) 
         avg_sentiment=round(avg_sentiment, 3),
         outlier_count=outlier_count,
     )
+
+
+async def _generate_conclusion(
+    metrics: AdMetrics,
+    signals: list[PersonaReactionSignal],
+    objective: str,
+) -> Conclusion | None:
+    impressions = [s.impression for s in signals if s.impression][:6]
+    impressions_block = "\n".join(f"- {imp}" for imp in impressions)
+
+    system = (
+        "당신은 광고 성과 분석 전문가입니다. "
+        "시뮬레이션 결과를 바탕으로 광고 집행 여부에 대한 명확한 결론을 JSON으로 작성하세요.\n\n"
+        "반환 형식:\n"
+        "{\n"
+        '  "verdict": "집행 권장" | "수정 후 재검토" | "집행 비권장",\n'
+        '  "reason": "2~3문장으로 판단 근거 설명",\n'
+        '  "strengths": ["강점1", "강점2"],\n'
+        '  "weaknesses": ["약점1", "약점2"]\n'
+        "}\n"
+        "모든 텍스트는 한국어로 작성하세요."
+    )
+
+    prompt = (
+        f"다음 광고 시뮬레이션 결과를 분석하고 집행 여부를 판단하세요.\n\n"
+        f"[성과 지표]\n"
+        f"VTR(조회완료율): {metrics.vtr}%\n"
+        f"CTR(클릭률): {metrics.ctr}%\n"
+        f"CVR(전환율): {metrics.cvr}%\n"
+        f"이탈률: {metrics.dropout_rate}%\n"
+        f"매력도: {metrics.avg_appeal_score}/5\n"
+        f"평균 감정: {metrics.avg_sentiment:.2f} (-1=강한거부 ~ 1=강한호감)\n"
+        f"캠페인 목적: {objective}\n\n"
+        f"[페르소나 인상 샘플]\n{impressions_block}\n\n"
+        "집행 기준:\n"
+        "- 집행 권장: VTR≥35% 또는 CTR≥3% 또는 매력도≥4.0\n"
+        "- 집행 비권장: VTR<25% 이고 CTR<1.5% 이고 이탈률≥70%\n"
+        "- 그 외: 수정 후 재검토"
+    )
+
+    try:
+        raw = await _call_openai(system, prompt, temperature=0.3)
+        data = json.loads(raw)
+        return Conclusion(
+            verdict=data["verdict"],
+            reason=data["reason"],
+            strengths=data.get("strengths", []),
+            weaknesses=data.get("weaknesses", []),
+        )
+    except Exception as exc:
+        logger.warning("결론 생성 실패: %s", exc)
+        return None

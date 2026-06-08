@@ -109,11 +109,19 @@ class AdMetrics(BaseModel):
     outlier_count: int = Field(default=0, description="IQR 이상치로 제외된 응답 수")
 
 
+class Conclusion(BaseModel):
+    verdict: str = Field(description="집행 권장 | 수정 후 재검토 | 집행 비권장")
+    reason: str = Field(description="판단 근거 2~3문장")
+    strengths: list[str] = Field(description="주요 강점 2~3개")
+    weaknesses: list[str] = Field(description="주요 약점 2~3개")
+
+
 class SimulationResponse(BaseModel):
     ad_id: str
     total_personas: int
     results: list[PersonaReactionSignal]
     metrics: AdMetrics
+    conclusion: Conclusion | None = None
 
 
 # ── Input ─────────────────────────────────────────────────────────────────────
@@ -143,7 +151,6 @@ class PersonaInput(BaseModel):
 
     # ── 상황 / 심리 ───────────────────────────────────────────────────────────
     platform: str | None = Field(default=None, description="광고를 보는 플랫폼 — e.g. '인스타그램', '유튜브'")
-    mbti: str | None = None
     emotional_state: str | None = Field(default=None, description="현재 감정 상태")
 
 

@@ -19,30 +19,6 @@ def build_platform_behavior(platform: str | None) -> str:
     return PLATFORM_BEHAVIOR.get(platform, _DEFAULT_PLATFORM_BEHAVIOR)
 
 
-# ── MBTI 기반 자기중심 필터 ────────────────────────────────────────────────────
-
-PERSONA_FILTER_TYPE: dict[str, str] = {
-    "ISFJ": "가족·신뢰·배려 — 이 브랜드가 진심으로 느껴지는가? 우리 가족 생활에 어울리는가?",
-    "ENFJ": "감성·울림·아름다움 — 나를 감동시키거나 영감을 주는가?",
-    "INTP": "효율·스펙·가성비 — 데이터가 납득되는가?",
-    "ESFP": "트렌드·사회적 시선·즐거움 — 이게 나를 더 쿨하게 만드는가?",
-    "ENFP": "새로움·가치관·설렘 — 내 가치관과 공명하는가?",
-    "INTJ": "효율·전략·결과 — 이게 진짜 효과가 있는가?",
-    "INFJ": "의미·가치·진정성 — 이 브랜드가 진심인가?",
-    "ESTP": "즉각적 자극·재미·혜택 — 지금 당장 뭔가 이득이 있는가?",
-    "ISTJ": "신뢰성·검증·안정 — 검증된 제품인가?",
-    "ESFJ": "관계·조화·사회적 인정 — 주변 사람들도 좋아할 것인가?",
-}
-
-_DEFAULT_FILTER = "나에게 지금 당장 필요한가?"
-
-
-def build_filter_type(mbti: str | None) -> str:
-    if not mbti:
-        return _DEFAULT_FILTER
-    return PERSONA_FILTER_TYPE.get(mbti.upper(), _DEFAULT_FILTER)
-
-
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT_TEMPLATE = """\
@@ -65,7 +41,6 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
   How ads appear  : {platform_behavior}
   Right now       : {context}
   Scroll away if  : {drop_off_trigger}
-  Personal lens   : {filter_type}
 {profile_block}{memory_block}
 ══════════════════════════════════════════════════════════════
   RULES
@@ -77,7 +52,6 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
 
   ✅ REQUIRED: React as THIS specific person — your identity drives your reaction
   ✅ REQUIRED: Your reaction may be positive, negative, or neutral — whatever fits your profile
-  ✅ REQUIRED: Filter through YOUR personality lens: {filter_type}
   ✅ REQUIRED: Emotional state [{emotional_state}] colors every reaction
   ✅ REQUIRED: 과거 기억이 있다면 그것이 현재 반응에 자연스럽게 영향을 준다
   ✅ REQUIRED: 모든 문자열 값을 한국어로만 작성할 것
@@ -245,9 +219,6 @@ def build_profile_block(persona) -> str:
         else:
             bl_label = f"보통({bl:.2f})"
         lines.append(f"  브랜드인식 : {bl_label}")
-
-    if persona.mbti:
-        lines.append(f"  성격 유형  : {persona.mbti}")
 
     if not lines:
         return ""
