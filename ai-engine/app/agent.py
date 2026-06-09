@@ -192,7 +192,7 @@ def _to_signal(
         reasoning=step2.reason,
         recall=step2.recall,
         emotions=step1.emotions,
-        confidence=step3.confidence,
+        confidence=_calibrate_confidence(step3.confidence, persona, step1.appeal_score),
         impression=step3.impression,
         reasoning_chain=step3.reasoning_chain,
     )
@@ -227,7 +227,7 @@ def _filter_outliers(
     return clean, removed
 
 
-# ── OpenAI 단일 호출 헬퍼 ──────────────────────────────────────────────────────
+# ── OpenAI 호출 헬퍼 ──────────────────────────────────────────────────────────
 
 async def _call_openai(system: str, user: str, temperature: float = _BASE_TEMPERATURE) -> str:
     async with _get_semaphore():
@@ -242,6 +242,54 @@ async def _call_openai(system: str, user: str, temperature: float = _BASE_TEMPER
             response_format={"type": "json_object"},
         )
     return response.choices[0].message.content
+
+
+async def _call_openai_text(system: str, user: str, temperature: float = _BASE_TEMPERATURE) -> str:
+    """JSON 형식 없이 텍스트 응답을 반환하는 헬퍼 (Reflection 생성 등에 사용)"""
+    async with _get_semaphore():
+        response = await _get_client().chat.completions.create(
+            model=_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=150,
+        )
+    return response.choices[0].message.content.strip()
+
+
+# ── Paper 3: Confidence 보정 ──────────────────────────────────────────────────
+
+def _calibrate_confidence(raw: float | None, persona: PersonaInput, appeal_score: int) -> float | None:
+    """페르소나 특성 기반 신뢰도 사후 보정 (Paper 3 — Agentic Confidence Calibration)"""
+    if raw is None:
+        return None
+    c = raw
+    if persona.brand_loyalty is not None and persona.brand_loyalty < 0.3:
+        c *= 0.85  # 브랜드 신뢰 낮음 → 확신 감소
+    if persona.age > 55:
+        c *= 0.90  # 보수적 연령대 → 확신 감소
+    if appeal_score == 5:
+        c = min(c * 1.10, 1.0)  # 강한 본능 반응 → 확신 증폭
+    if persona.deal_prone_score is not None and persona.deal_prone_score >= 0.7 and appeal_score >= 4:
+        c = min(c * 1.05, 1.0)  # 가격 민감 + 높은 관심 → 확신 소폭 증폭
+    return round(min(max(c, 0.0), 1.0), 3)
+
+
+# ── Paper 1: Memory Importance 점수 계산 ─────────────────────────────────────
+
+def _compute_importance(signal: PersonaReactionSignal) -> int:
+    """광고 반응 중요도 1-10 점수 (Paper 1 — Generative Agents)"""
+    if signal.conversion_intent:
+        return 9  # 구매 의향 → 가장 중요한 기억
+    if signal.click_intent:
+        return 7  # 클릭 → 중요
+    if signal.sentiment <= -0.5:
+        return 4  # 강한 거부 → 부정 패턴으로서 의미 있음
+    if signal.sentiment >= 0.5:
+        return 6  # 호감이었지만 클릭 미발생
+    return 3  # 스크롤 넘김 → 낮은 중요도
 
 
 # ── 메모리 이벤트 내용 생성 ───────────────────────────────────────────────────
@@ -464,6 +512,43 @@ async def run_cascade_simulation(
     )
 
 
+async def _maybe_generate_reflection(pool, persona_id: str, persona_name: str) -> None:
+    """5의 배수 이벤트 도달 시 Reflection 메모리 합성 (Paper 1 — Generative Agents)"""
+    try:
+        async with pool.acquire() as conn:
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM persona_memories WHERE persona_id = $1 AND tag != 'REFLECTION'",
+                persona_id,
+            )
+        if count == 0 or count % 5 != 0:
+            return
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT content FROM persona_memories"
+                " WHERE persona_id = $1 AND tag != 'REFLECTION'"
+                " ORDER BY created_at DESC LIMIT 5",
+                persona_id,
+            )
+        memories_text = "\n".join(f"- {r['content']}" for r in rows)
+
+        system = (
+            "당신은 소비자 행동 분석 전문가입니다. "
+            "아래 광고 반응 이력을 보고 이 사람의 광고 소비 패턴을 한 문장으로 요약하세요. "
+            "분석적 언어 없이 사실만 기술하세요. 한국어로만 답하세요."
+        )
+        prompt = (
+            f"[{persona_name}의 최근 광고 반응 이력]\n{memories_text}\n\n"
+            "→ 이 사람의 광고 소비 패턴 (한 문장):"
+        )
+
+        reflection = await _call_openai_text(system, prompt, temperature=0.3)
+        await save_memory(pool, persona_id, "REFLECTION", reflection, importance=8)
+        logger.info("Reflection 생성: persona=%s count=%d", persona_id, count)
+    except Exception as exc:
+        logger.warning("Reflection 생성 실패 (persona=%s): %s", persona_id, exc)
+
+
 async def _save_simulation_memories(
     pool,
     signals: list[PersonaReactionSignal],
@@ -474,11 +559,20 @@ async def _save_simulation_memories(
     tasks = []
     for signal in signals:
         content, tag = _build_event_content(signal, ad_content)
-        tasks.append(save_memory(pool, signal.persona_id, tag, content))
+        importance = _compute_importance(signal)
+        tasks.append(save_memory(pool, signal.persona_id, tag, content, importance))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     errors = [r for r in results if isinstance(r, Exception)]
     if errors:
         logger.warning("메모리 저장 실패 %d건: %s", len(errors), errors[0])
+
+    # Paper 1: 5의 배수 도달 시 Reflection 생성 (fire-and-forget)
+    for signal in signals:
+        persona = persona_map.get(signal.persona_id)
+        if persona:
+            asyncio.ensure_future(
+                _maybe_generate_reflection(pool, signal.persona_id, persona.name)
+            )
 
 
 # ── 집계 지표 ─────────────────────────────────────────────────────────────────

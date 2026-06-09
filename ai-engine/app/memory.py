@@ -50,25 +50,28 @@ async def save_memory(
     persona_id: str,
     tag: str,
     content: str,
+    importance: int = 5,
 ) -> None:
     """광고 반응 이벤트를 persona_memories에 저장한다.
 
     tag: EVENT | PURCHASE | REFLECTION | CONVERSATION
+    importance: 1-10 (Paper 1 — Generative Agents 중요도 점수)
     """
     if not pool:
         return
     try:
         embedding = await _embed(content)
         vec_str = _vec_to_pg(embedding)
+        importance = max(1, min(10, importance))
         async with pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO persona_memories (persona_id, tag, content, embedding)
-                VALUES ($1, $2, $3, $4::vector)
+                INSERT INTO persona_memories (persona_id, tag, content, embedding, importance)
+                VALUES ($1, $2, $3, $4::vector, $5)
                 """,
-                persona_id, tag, content, vec_str,
+                persona_id, tag, content, vec_str, importance,
             )
-        logger.debug("Memory saved: persona=%s tag=%s", persona_id, tag)
+        logger.debug("Memory saved: persona=%s tag=%s importance=%d", persona_id, tag, importance)
     except Exception as exc:
         logger.warning("Memory save failed (persona=%s): %s", persona_id, exc)
 
@@ -78,7 +81,14 @@ async def retrieve_memories(
     persona_id: str,
     query_text: str,
 ) -> list[dict]:
-    """관련 과거 기억을 벡터 유사도 + time-decay 점수로 조회한다."""
+    """관련 과거 기억을 3-factor 점수로 조회한다.
+
+    Paper 1 (Generative Agents) 공식:
+        score = (recency + importance_norm + relevance) / 3
+    - recency      : time-decay (최신일수록 1에 가까움)
+    - importance   : 1-10 저장값을 0-1로 정규화
+    - relevance    : 코사인 유사도
+    """
     if not pool:
         return []
     try:
@@ -87,7 +97,7 @@ async def retrieve_memories(
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT tag, content, created_at,
+                SELECT tag, content, created_at, importance,
                        1 - (embedding <=> $1::vector) AS similarity
                 FROM persona_memories
                 WHERE persona_id = $2
@@ -99,11 +109,14 @@ async def retrieve_memories(
 
         results: list[dict] = []
         for r in rows:
-            decay = _time_decay(r["created_at"])
+            recency = _time_decay(r["created_at"])
+            importance_norm = (r["importance"] - 1) / 9.0
+            relevance = float(r["similarity"])
+            score = (recency + importance_norm + relevance) / 3.0
             results.append({
                 "tag": r["tag"],
                 "content": r["content"],
-                "score": float(r["similarity"]) * decay,
+                "score": score,
             })
 
         results.sort(key=lambda x: x["score"], reverse=True)

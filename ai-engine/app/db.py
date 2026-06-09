@@ -59,6 +59,15 @@ async def init_memory_table() -> None:
                 created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        # Paper 1 (Generative Agents): importance 컬럼 마이그레이션
+        try:
+            await conn.execute("""
+                ALTER TABLE persona_memories
+                ADD COLUMN IF NOT EXISTS importance SMALLINT NOT NULL DEFAULT 5
+            """)
+        except Exception as e:
+            logger.warning("importance 컬럼 추가 스킵: %s", e)
+
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_persona_memories_persona
             ON persona_memories (persona_id)
