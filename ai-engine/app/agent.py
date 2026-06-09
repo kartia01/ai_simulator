@@ -97,8 +97,8 @@ def _fix_logic_errors(result: CognitiveLoopResult, objective: str = "conversion"
     step2 = result.step2_selfish_filtering
     step3 = result.step3_final_action
 
-    # 점수 최저인데 이탈 안 함
-    if step1.appeal_score == 1 and not step2.is_dropped_out:
+    # 점수 낮은데 이탈 안 함 (appeal_score 1~2 → is_dropped_out=true)
+    if step1.appeal_score <= 2 and not step2.is_dropped_out:
         logger.warning("Persona %s — 점수=1인데 이탈=False → 이탈 True 보정", result.persona_id)
         step2.is_dropped_out = True
         step3.clicked = False
@@ -186,6 +186,7 @@ def _to_signal(
         segment=_compute_segment(persona),
         attention=attention,
         sentiment=step2.sentiment,
+        is_dropped_out=step2.is_dropped_out,
         click_intent=step3.clicked,
         conversion_intent=step3.conversion_intent,
         comprehension=step2.comprehension,
@@ -346,7 +347,6 @@ async def _simulate_one(
     prompt = build_combined_prompt(
         ad_content=ad_content,
         context=persona.context,
-        drop_off_trigger=persona.drop_off_trigger,
         objective=objective,
         product_price=product_price,
         price_threshold=persona.price_threshold,
@@ -500,8 +500,9 @@ async def run_cascade_simulation(
         ad_id, len(clean_signals), len(personas), outlier_count,
     )
 
-    metrics = _calc_metrics(clean_signals, outlier_count)
-    conclusion = await _generate_conclusion(metrics, clean_signals, objective)
+    platform_list = [p.platform for p in personas if p.platform]
+    metrics = _calc_metrics(clean_signals, outlier_count, platform_list)
+    conclusion = await _generate_conclusion(metrics, clean_signals, objective, ad_content=ad_content)
 
     return SimulationResponse(
         ad_id=ad_id,
@@ -575,9 +576,36 @@ async def _save_simulation_memories(
             )
 
 
+# ── 플랫폼별 CTR 벤치마크 (한국 디지털 광고 업계 평균) ──────────────────────────
+
+_PLATFORM_CTR_BENCHMARK: dict[str, float] = {
+    "인스타그램": 1.0,
+    "instagram": 1.0,
+    "유튜브": 0.3,
+    "youtube": 0.3,
+    "틱톡": 0.8,
+    "tiktok": 0.8,
+    "네이버": 1.5,
+    "카카오": 0.8,
+    "facebook": 1.0,
+}
+_DEFAULT_CTR_BENCHMARK = 0.8
+
+
+def _benchmark_ctr_for_platforms(platforms: list[str]) -> float:
+    if not platforms:
+        return _DEFAULT_CTR_BENCHMARK
+    scores = [_PLATFORM_CTR_BENCHMARK.get(p.lower(), _DEFAULT_CTR_BENCHMARK) for p in platforms if p]
+    return round(sum(scores) / len(scores), 2) if scores else _DEFAULT_CTR_BENCHMARK
+
+
 # ── 집계 지표 ─────────────────────────────────────────────────────────────────
 
-def _calc_metrics(signals: list[PersonaReactionSignal], outlier_count: int = 0) -> AdMetrics:
+def _calc_metrics(
+    signals: list[PersonaReactionSignal],
+    outlier_count: int = 0,
+    platform_list: list[str] | None = None,
+) -> AdMetrics:
     n = len(signals)
 
     # appeal_score는 더 이상 직접 갖고 있지 않음 — attention으로부터 역산
@@ -585,24 +613,35 @@ def _calc_metrics(signals: list[PersonaReactionSignal], outlier_count: int = 0) 
     avg_attention = sum(s.attention for s in signals) / n
     avg_appeal = round(avg_attention * 4 + 1, 2)
 
-    # VTR: 이탈하지 않은 비율 (sentiment >= 0 또는 click_intent=True)
-    stayed = sum(1 for s in signals if s.click_intent or s.sentiment >= 0)
+    # VTR: Step 2 이탈하지 않은 비율
+    stayed = sum(1 for s in signals if not s.is_dropped_out)
     clicked = sum(1 for s in signals if s.click_intent)
     converted = sum(1 for s in signals if s.conversion_intent)
     avg_sentiment = sum(s.sentiment for s in signals) / n
 
-    # dropout_rate: click_intent=False이고 sentiment < 0인 비율
-    dropout = sum(1 for s in signals if not s.click_intent and s.sentiment < 0)
+    # dropout_rate: Step 2 이탈률
+    dropout = sum(1 for s in signals if s.is_dropped_out)
+
+    ctr = round(clicked / n * 100, 1)
+    benchmark_ctr = _benchmark_ctr_for_platforms(platform_list or [])
+    if ctr >= benchmark_ctr * 1.2:
+        benchmark_status = "상회"
+    elif ctr >= benchmark_ctr * 0.6:
+        benchmark_status = "근접"
+    else:
+        benchmark_status = "하회"
 
     return AdMetrics(
         vtr=round(stayed / n * 100, 1),
-        ctr=round(clicked / n * 100, 1),
+        ctr=ctr,
         cvr=round(converted / n * 100, 1),
         dropout_rate=round(dropout / n * 100, 1),
         avg_appeal_score=avg_appeal,
         avg_attention=round(avg_attention, 3),
         avg_sentiment=round(avg_sentiment, 3),
         outlier_count=outlier_count,
+        benchmark_ctr=benchmark_ctr,
+        benchmark_status=benchmark_status,
     )
 
 
@@ -610,9 +649,12 @@ async def _generate_conclusion(
     metrics: AdMetrics,
     signals: list[PersonaReactionSignal],
     objective: str,
+    ad_content: str = "",
 ) -> Conclusion | None:
     impressions = [s.impression for s in signals if s.impression][:6]
     impressions_block = "\n".join(f"- {imp}" for imp in impressions)
+
+    ad_hint = ad_content[:300].replace("\n", " ").strip() if ad_content else "정보 없음"
 
     system = (
         "당신은 광고 성과 분석 전문가입니다. "
@@ -620,7 +662,7 @@ async def _generate_conclusion(
         "반환 형식:\n"
         "{\n"
         '  "verdict": "집행 권장" | "수정 후 재검토" | "집행 비권장",\n'
-        '  "reason": "2~3문장으로 판단 근거 설명",\n'
+        '  "reason": "2~3문장으로 판단 근거 설명 (광고 내용을 구체적으로 언급하여 설명)",\n'
         '  "strengths": ["강점1", "강점2"],\n'
         '  "weaknesses": ["약점1", "약점2"]\n'
         "}\n"
@@ -629,6 +671,7 @@ async def _generate_conclusion(
 
     prompt = (
         f"다음 광고 시뮬레이션 결과를 분석하고 집행 여부를 판단하세요.\n\n"
+        f"[광고 내용]\n{ad_hint}\n\n"
         f"[성과 지표]\n"
         f"VTR(조회완료율): {metrics.vtr}%\n"
         f"CTR(클릭률): {metrics.ctr}%\n"
@@ -641,7 +684,8 @@ async def _generate_conclusion(
         "집행 기준:\n"
         "- 집행 권장: VTR≥35% 또는 CTR≥3% 또는 매력도≥4.0\n"
         "- 집행 비권장: VTR<25% 이고 CTR<1.5% 이고 이탈률≥70%\n"
-        "- 그 외: 수정 후 재검토"
+        "- 그 외: 수정 후 재검토\n\n"
+        "강점과 약점은 위 광고 내용을 기반으로 구체적으로 서술하세요."
     )
 
     try:

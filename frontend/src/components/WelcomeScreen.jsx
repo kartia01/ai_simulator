@@ -3,10 +3,9 @@
 import { useState, useRef, useCallback } from 'react';
 
 const SUGGESTIONS = [
-  '광고 시뮬레이션을 해줘',
-  '새 광고 소재를 테스트하고 싶어',
-  'AI 페르소나 반응이 궁금해',
-  '광고 효과를 분석해줘',
+  { label: '광고 시뮬레이션을 해줘' },
+  { label: '페르소나를 추가하고 싶어', navigate: 'personas' },
+  { label: '광고 이미지를 만들어줘', navigate: 'ad-image' },
 ];
 
 const FEATURES = [
@@ -22,7 +21,7 @@ function extractAdContent(text) {
   return isNavRequest ? '' : text;
 }
 
-export default function WelcomeScreen({ onStart }) {
+export default function WelcomeScreen({ onStart, onNavigate }) {
   const [text, setText] = useState('');
   const [leaving, setLeaving] = useState(false);
   const taRef = useRef(null);
@@ -40,9 +39,13 @@ export default function WelcomeScreen({ onStart }) {
     }
   };
 
-  const fill = (val) => {
-    setText(val);
-    taRef.current?.focus();
+  const handleChipClick = (suggestion) => {
+    if (suggestion.navigate) {
+      onNavigate?.(suggestion.navigate);
+    } else {
+      setText(suggestion.label);
+      taRef.current?.focus();
+    }
   };
 
   return (
@@ -111,11 +114,15 @@ export default function WelcomeScreen({ onStart }) {
         <div className="flex flex-wrap gap-2 mt-3.5 justify-center px-10">
           {SUGGESTIONS.map((s) => (
             <button
-              key={s}
-              onClick={() => fill(s)}
-              className="px-3.5 py-1.5 text-xs font-bold text-brand-muted bg-sky-50 border border-sky-400/20 rounded-full hover:bg-sky-100 hover:text-sky-600 hover:border-sky-400/40 transition-all hover:-translate-y-0.5"
+              key={s.label}
+              onClick={() => handleChipClick(s)}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-full transition-all hover:-translate-y-0.5 ${
+                s.navigate
+                  ? 'text-sky-600 bg-sky-100 border border-sky-400/40 hover:bg-sky-200 hover:border-sky-400/60'
+                  : 'text-brand-muted bg-sky-50 border border-sky-400/20 hover:bg-sky-100 hover:text-sky-600 hover:border-sky-400/40'
+              }`}
             >
-              {s}
+              {s.navigate === 'personas' ? '👤 ' : s.navigate === 'ad-image' ? '🎨 ' : ''}{s.label}
             </button>
           ))}
         </div>

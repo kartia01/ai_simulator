@@ -32,7 +32,7 @@ const VERDICT_SHORT = {
   "집행 비권장":   { label: "비권장", color: "bg-red-500" },
 };
 
-export default function SimulationDashboard({ initialContent = "", onBack }) {
+export default function SimulationDashboard({ initialContent = "", onBack, personas = [], activePersonaIds = new Set(), onManagePersonas }) {
   const { result, loading, error, simulate, reset } = useSimulation();
 
   const [adContent, setAdContent] = useState(initialContent);
@@ -45,6 +45,7 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
 
   const [history, setHistory] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+
 
   const handleFile = useCallback((file) => {
     if (!file) return;
@@ -90,15 +91,21 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
     [mediaFile],
   );
 
+  const activeCount = useMemo(
+    () => personas.filter((p) => activePersonaIds.has(p.persona_id)).length,
+    [personas, activePersonaIds],
+  );
+
   const canSubmit = useMemo(
-    () => !loading && (adContent.trim().length >= 10 || mediaFile != null),
-    [loading, adContent, mediaFile],
+    () => !loading && activeCount > 0 && (adContent.trim().length >= 10 || mediaFile != null),
+    [loading, activeCount, adContent, mediaFile],
   );
 
   const handleReset = useCallback(() => {
     reset();
     removeMedia();
     setAdContent("");
+    setSelectedId(null);
   }, [reset, removeMedia]);
 
   const pendingMetaRef = useRef(null);
@@ -107,15 +114,19 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
     e.preventDefault();
     if (!canSubmit) return;
     const id = `ad-${Date.now()}`;
-    pendingMetaRef.current = { id, adContent, adType, mediaFileName: mediaFile?.name ?? null, timestamp: Date.now() };
+    pendingMetaRef.current = {
+      id, adContent, adType,
+      mediaFileName: mediaFile?.name ?? null, timestamp: Date.now(),
+    };
     simulate({
       adId: id,
       adContent,
       adType,
-      personaIds: [],
+      personaIds: personas.filter((p) => activePersonaIds.has(p.persona_id)).map((p) => p.persona_id),
+      customPersonas: [],
       mediaFile: mediaFile ?? undefined,
     });
-  }, [canSubmit, simulate, adContent, adType, mediaFile]);
+  }, [canSubmit, simulate, adContent, adType, mediaFile, personas, activePersonaIds]);
 
   useEffect(() => {
     if (!result || !pendingMetaRef.current) return;
@@ -327,21 +338,49 @@ export default function SimulationDashboard({ initialContent = "", onBack }) {
                   초기화
                 </button>
               )}
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="px-6 py-2 bg-gradient-to-r from-sky-400 to-sky-500 hover:from-sky-500 hover:to-sky-600
-                           disabled:from-brand-bg2 disabled:to-brand-bg2 disabled:text-brand-light
-                           text-sm font-bold text-white rounded-xl transition-all
-                           shadow-[0_4px_14px_rgba(56,189,248,0.28)] hover:shadow-[0_8px_22px_rgba(56,189,248,0.35)]
-                           hover:-translate-y-0.5 active:translate-y-0"
-              >
-                {loading ? "시뮬레이션 중…" : "시뮬레이션 실행"}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="px-6 py-2 bg-gradient-to-r from-sky-400 to-sky-500 hover:from-sky-500 hover:to-sky-600
+                             disabled:from-brand-bg2 disabled:to-brand-bg2 disabled:text-brand-light
+                             text-sm font-bold text-white rounded-xl transition-all
+                             shadow-[0_4px_14px_rgba(56,189,248,0.28)] hover:shadow-[0_8px_22px_rgba(56,189,248,0.35)]
+                             hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  {loading ? "시뮬레이션 중…" : "시뮬레이션 실행"}
+                </button>
+                {!loading && activeCount === 0 && personas.length > 0 && (
+                  <p className="text-[11px] text-amber-600">활성화된 페르소나를 1명 이상 선택해 주세요.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </form>
+
+      {/* ── 내 페르소나 섹션 ── */}
+      <div className="mb-10 flex items-center justify-between bg-white border border-sky-400/20 rounded-2xl px-5 py-3.5 shadow-card">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xs font-bold text-brand-muted uppercase tracking-widest">내 페르소나</h2>
+          {personas.length === 0 ? (
+            <span className="text-xs text-brand-light">등록된 페르소나가 없습니다</span>
+          ) : (
+            <span className={`text-sm font-bold ${activeCount === 0 ? "text-amber-500" : "text-sky-500"}`}>
+              {activeCount}명 선택됨 / {personas.length}명
+            </span>
+          )}
+          {activeCount === 0 && personas.length > 0 && (
+            <span className="text-[11px] text-amber-600">1명 이상 선택해 주세요</span>
+          )}
+        </div>
+        <button
+          onClick={onManagePersonas}
+          className="text-xs font-bold text-sky-500 hover:text-sky-600 border border-sky-400/30 rounded-lg px-3 py-1.5 hover:bg-sky-50 transition-colors shrink-0"
+        >
+          페르소나 관리 →
+        </button>
+      </div>
 
       {loading && (
         <div className="flex flex-col items-center justify-center py-20 gap-4">

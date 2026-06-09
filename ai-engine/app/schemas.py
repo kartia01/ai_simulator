@@ -81,6 +81,7 @@ class PersonaReactionSignal(BaseModel):
     # P0 필수
     attention: float = Field(ge=0.0, le=1.0)
     sentiment: float = Field(ge=-1.0, le=1.0)
+    is_dropped_out: bool = Field(description="Step 2 이탈 여부 — True면 즉시 스크롤")
     click_intent: bool
     conversion_intent: bool
 
@@ -107,6 +108,8 @@ class AdMetrics(BaseModel):
     avg_attention: float = Field(description="Average attention 0.0~1.0")
     avg_sentiment: float = Field(description="Average sentiment -1.0~1.0")
     outlier_count: int = Field(default=0, description="IQR 이상치로 제외된 응답 수")
+    benchmark_ctr: float | None = Field(default=None, description="플랫폼 가중 평균 CTR 벤치마크 (%)")
+    benchmark_status: str | None = Field(default=None, description="상회 | 근접 | 하회")
 
 
 class Conclusion(BaseModel):

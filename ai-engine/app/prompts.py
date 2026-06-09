@@ -4,10 +4,14 @@ from __future__ import annotations
 
 PLATFORM_BEHAVIOR = {
     "인스타그램": "피드를 스크롤 중. 광고는 일반 게시물처럼 위장되어 있음.",
+    "Instagram": "피드를 스크롤 중. 광고는 일반 게시물처럼 위장되어 있음.",
     "유튜브": "영상 앞 강제 광고. 5초 후 스킵 버튼 등장.",
+    "YouTube": "영상 앞 강제 광고. 5초 후 스킵 버튼 등장.",
     "틱톡": "풀스크린 자동재생 광고. 위로 스와이프하면 다음 영상으로 넘어감.",
+    "TikTok": "풀스크린 자동재생 광고. 위로 스와이프하면 다음 영상으로 넘어감.",
     "네이버": "검색 결과 사이 텍스트/이미지 배너.",
     "카카오": "카카오톡/카카오스토리 피드 속 광고. 지인 게시물과 섞여 있음.",
+    "Facebook": "피드를 스크롤 중. 광고는 일반 게시물처럼 위장되어 있음.",
 }
 
 _DEFAULT_PLATFORM_BEHAVIOR = "스마트폰으로 피드를 스크롤 중."
@@ -49,12 +53,18 @@ You are NOT an AI assistant. You are {name}, a real person living your daily lif
   ❌ FORBIDDEN: AI-like balanced evaluation
   ❌ FORBIDDEN: Any non-Korean characters in string values
   ❌ FORBIDDEN: Inventing product risks or health concerns not shown in the ad
+  ❌ FORBIDDEN: 문어체·보고서 문체 ("현재 ~하고 있다", "~할 여유가 없다", "~한 상황이다")
+  ❌ FORBIDDEN: "현재", "상황", "여유", "상태" 같은 보고서식 단어로 문장 시작
 
   ✅ REQUIRED: React as THIS specific person — your identity drives your reaction
   ✅ REQUIRED: Your reaction may be positive, negative, or neutral — whatever fits your profile
   ✅ REQUIRED: Emotional state [{emotional_state}] colors every reaction
   ✅ REQUIRED: 과거 기억이 있다면 그것이 현재 반응에 자연스럽게 영향을 준다
   ✅ REQUIRED: 모든 문자열 값을 한국어로만 작성할 것
+  ✅ REQUIRED: reason·action_reason·impression·reasoning_chain은 반드시 구어체 내면 독백으로
+     → 자연스러운 연결어 사용: ~는데, ~니까, ~라서, ~고, ~잖아, ~네
+     → 예시 (좋음): "목도 마른데 집중해야 해서 그냥 넘겼다"
+     → 예시 (나쁨): "현재 목이 마르고 집중해야 해서 광고에 신경 쓸 여유가 없다"
 
 ══════════════════════════════════════════════════════════════
   CONSISTENCY RULES  —  STRICTLY ENFORCED
@@ -100,7 +110,6 @@ COMBINED_USER_PROMPT = """\
 
 [Step 2 — 속마음, 3초]
   지금 상황: {context}
-  넘기는 조건: {drop_off_trigger}
   Step 1 반응을 기반으로 이 광고가 지금의 나에게 어떻게 느껴지는가?
   sentiment: -1.0 강한 거부감 / 0.0 중립 / 1.0 강한 호감
   comprehension: 0.0 전혀 이해 못함 / 0.5 부분 이해 / 1.0 정확히 이해
@@ -129,15 +138,15 @@ Output ONLY:
   "emotions": ["<한국어1>", "<한국어2>", "<한국어3>"],
   "appeal_score": <integer 1–5>,
   "is_dropped_out": <true|false>,
-  "reason": "<솔직한 속마음 1–3문장>",
+  "reason": "<구어체 속마음 1–3문장 — '~는데', '~니까', '~잖아' 등 자연스러운 말투>",
   "sentiment": <float -1.0~1.0>,
   "comprehension": <float 0.0~1.0>,
   "recall": <float 0.0~1.0>,
-  "reasoning_chain": "<욕구→예산→브랜드 판단 내부 독백 1문장>",
+  "reasoning_chain": "<내면 독백 1문장 — 보고서 문체 금지, 혼잣말처럼>",
   "clicked": <true|false>,
   "conversion_intent": <true|false>,
-  "action_reason": "<엄지를 움직인 단 하나의 생각>",
-  "impression": "<이 광고에 대한 솔직한 한 줄 느낌>",
+  "action_reason": "<엄지를 움직인 단 하나의 생각 — 짧고 직관적으로>",
+  "impression": "<광고에 대한 솔직한 한 줄 느낌 — 구어체로>",
   "confidence": <float 0.0~1.0>
 }}\
 """
@@ -150,7 +159,6 @@ def _escape_braces(s: str) -> str:
 def build_combined_prompt(
     ad_content: str,
     context: str,
-    drop_off_trigger: str,
     objective: str,
     product_price: int | None,
     price_threshold: int | None,
@@ -175,7 +183,6 @@ def build_combined_prompt(
     return COMBINED_USER_PROMPT.format(
         ad_content=_escape_braces(ad_content),
         context=_escape_braces(context),
-        drop_off_trigger=_escape_braces(drop_off_trigger),
         step3_instruction=step3_instruction,
     )
 

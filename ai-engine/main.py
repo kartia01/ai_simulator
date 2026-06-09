@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from openai import AuthenticationError
 
 from app import db
 from app.agent import run_cascade_simulation, _get_client
-from app.schemas import AdType
+from app.schemas import AdType, PersonaInput
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     if not os.getenv("OPENAI_API_KEY"):
         logger.warning("OPENAI_API_KEY is not set — simulations will fail")
     await db.init_db()
+    await db.init_personas_table()
     await db.init_memory_table()
     logger.info("Ad Simulator AI Engine — startup")
     yield
@@ -65,7 +67,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -81,6 +83,25 @@ def _err(status: int, message: str) -> JSONResponse:
 _VALID_OBJECTIVES = {"awareness", "conversion"}
 
 
+def _apply_target_filter(
+    personas: list[PersonaInput],
+    age_min: int | None,
+    age_max: int | None,
+    gender: str | None,
+    platform: str | None,
+) -> list[PersonaInput]:
+    filtered = personas
+    if age_min is not None:
+        filtered = [p for p in filtered if p.age >= age_min]
+    if age_max is not None:
+        filtered = [p for p in filtered if p.age <= age_max]
+    if gender:
+        filtered = [p for p in filtered if p.gender and gender.lower() in p.gender.lower()]
+    if platform:
+        filtered = [p for p in filtered if p.platform and platform.lower() in p.platform.lower()]
+    return filtered if filtered else personas
+
+
 async def _run(
     ad_id: str,
     ad_content: str,
@@ -90,6 +111,11 @@ async def _run(
     media_content_type: str | None,
     objective: str = "conversion",
     product_price: int | None = None,
+    custom_personas_raw: list[dict] | None = None,
+    target_age_min: int | None = None,
+    target_age_max: int | None = None,
+    target_gender: str | None = None,
+    target_platform: str | None = None,
 ) -> JSONResponse:
     has_text = len(ad_content.strip()) >= 10
     has_media = bool(media_base64)
@@ -99,17 +125,35 @@ async def _run(
     if objective not in _VALID_OBJECTIVES:
         objective = "conversion"
 
-    try:
-        personas = (
-            await db.get_personas_by_ids(persona_ids)
-            if persona_ids
-            else await db.get_all_personas()
-        )
-    except RuntimeError as exc:
-        return _err(503, str(exc))
+    custom_personas: list[PersonaInput] = []
+    for raw in (custom_personas_raw or []):
+        try:
+            custom_personas.append(PersonaInput(**raw))
+        except Exception as exc:
+            logger.warning("Invalid custom persona skipped: %s", exc)
+
+    db_personas: list[PersonaInput] = []
+    if persona_ids:
+        try:
+            db_personas = await db.get_personas_by_ids(persona_ids)
+        except RuntimeError as exc:
+            return _err(503, str(exc))
+    elif not custom_personas:
+        # personaIds·customPersonas 모두 없을 때만 DB 전체 로드 (API 하위 호환)
+        try:
+            db_personas = await db.get_all_personas()
+        except RuntimeError as exc:
+            return _err(503, str(exc))
+
+    personas = db_personas + custom_personas
+
+    has_target = any(v is not None for v in (target_age_min, target_age_max, target_gender, target_platform))
+    if has_target:
+        personas = _apply_target_filter(personas, target_age_min, target_age_max, target_gender, target_platform)
+        logger.info("Target filter applied — %d personas remain", len(personas))
 
     if not personas:
-        return _err(400, "No personas found — seed the database first")
+        return _err(400, "시뮬레이션에 사용할 페르소나가 없습니다. 페르소나를 추가하거나 선택해 주세요.")
 
     is_video = media_content_type is not None and media_content_type.startswith("video/")
     safe_type = ad_type if ad_type in ("IMAGE", "VIDEO") else "IMAGE"
@@ -176,6 +220,14 @@ async def simulate(request: Request):
             logger.info("Media received: type=%s size=%dKB", media_content_type, len(media_bytes) // 1024)
 
         persona_ids: list[str] = [pid for pid in form.getlist("personaIds") if pid]
+        try:
+            custom_personas_raw = json.loads(form.get("customPersonas") or "[]")
+        except Exception:
+            custom_personas_raw = []
+        target_age_min = int(form.get("targetAgeMin")) if form.get("targetAgeMin") else None
+        target_age_max = int(form.get("targetAgeMax")) if form.get("targetAgeMax") else None
+        target_gender = form.get("targetGender") or None
+        target_platform = form.get("targetPlatform") or None
 
     else:
         body = await request.json()
@@ -189,11 +241,22 @@ async def simulate(request: Request):
         media_base64 = body.get("mediaBase64")
         media_content_type = body.get("mediaContentType")
         persona_ids = [str(pid) for pid in (body.get("personaIds") or [])]
+        custom_personas_raw = body.get("customPersonas") or []
+        target = body.get("targetFilter") or {}
+        target_age_min = target.get("ageMin")
+        target_age_max = target.get("ageMax")
+        target_gender = target.get("gender") or None
+        target_platform = target.get("platform") or None
 
     return await _run(
         ad_id, ad_content, ad_type, persona_ids,
         media_base64, media_content_type,
         objective=objective, product_price=product_price,
+        custom_personas_raw=custom_personas_raw,
+        target_age_min=target_age_min,
+        target_age_max=target_age_max,
+        target_gender=target_gender,
+        target_platform=target_platform,
     )
 
 
@@ -204,6 +267,53 @@ async def list_personas():
     except RuntimeError as exc:
         return _err(503, str(exc))
     return JSONResponse(content=[p.model_dump() for p in personas])
+
+
+@app.post("/api/personas", status_code=201)
+async def create_persona_endpoint(request: Request):
+    body = await request.json()
+    try:
+        persona = PersonaInput(**body)
+    except Exception as exc:
+        return _err(400, f"잘못된 페르소나 데이터: {exc}")
+    try:
+        pid = await db.create_persona(persona)
+    except RuntimeError as exc:
+        return _err(503, str(exc))
+    except Exception as exc:
+        logger.error("페르소나 생성 오류: %s", exc, exc_info=True)
+        return _err(500, "페르소나 생성 중 오류가 발생했습니다.")
+    return JSONResponse(content={"persona_id": pid}, status_code=201)
+
+
+@app.put("/api/personas/{persona_id}")
+async def update_persona_endpoint(persona_id: str, request: Request):
+    body = await request.json()
+    body["persona_id"] = persona_id
+    try:
+        persona = PersonaInput(**body)
+    except Exception as exc:
+        return _err(400, f"잘못된 페르소나 데이터: {exc}")
+    try:
+        await db.update_persona(persona)
+    except RuntimeError as exc:
+        return _err(503, str(exc))
+    except Exception as exc:
+        logger.error("페르소나 수정 오류: %s", exc, exc_info=True)
+        return _err(500, "페르소나 수정 중 오류가 발생했습니다.")
+    return JSONResponse(content={"ok": True})
+
+
+@app.delete("/api/personas/{persona_id}")
+async def delete_persona_endpoint(persona_id: str):
+    try:
+        await db.delete_persona(persona_id)
+    except RuntimeError as exc:
+        return _err(503, str(exc))
+    except Exception as exc:
+        logger.error("페르소나 삭제 오류: %s", exc, exc_info=True)
+        return _err(500, "페르소나 삭제 중 오류가 발생했습니다.")
+    return JSONResponse(content={"ok": True})
 
 
 # ── 헬스체크 ─────────────────────────────────────────────────────────────────

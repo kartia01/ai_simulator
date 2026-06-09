@@ -35,7 +35,7 @@ function ScoreDots({ score }) {
 export default function PersonaFeedbackCard({ result, persona }) {
   const emotions = result.emotions ?? [];
   const appealScore = Math.round(result.attention * 4 + 1);
-  const dropped = !result.clickIntent && result.sentiment < 0;
+  const dropped = result.isDroppedOut ?? (!result.clickIntent && result.sentiment < 0);
   const clicked = result.clickIntent;
   const badge = getBadge(clicked, dropped);
 
